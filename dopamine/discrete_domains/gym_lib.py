@@ -50,6 +50,14 @@ gin.constant('gym_lib.ACROBOT_STACK_SIZE', 1)
 
 
 @gin.configurable
+def network_size(size=None):
+  if size is None:
+    return [512, 512]
+
+  return size
+
+
+@gin.configurable
 def create_gym_environment(environment_name=None, version='v0'):
   """Wraps a Gym environment with some basic preprocessing.
 
@@ -73,7 +81,7 @@ def create_gym_environment(environment_name=None, version='v0'):
 
 @gin.configurable
 def _basic_discrete_domain_network(min_vals, max_vals, num_actions, state,
-                                   num_atoms=None):
+                                  num_atoms=None):
   """Builds a basic network for discrete domains, rescaling inputs to [-1, 1].
 
   Args:
@@ -92,8 +100,9 @@ def _basic_discrete_domain_network(min_vals, max_vals, num_actions, state,
   net -= min_vals
   net /= max_vals - min_vals
   net = 2.0 * net - 1.0  # Rescale in range [-1, 1].
-  net = tf.contrib.slim.fully_connected(net, 512)
-  net = tf.contrib.slim.fully_connected(net, 512)
+  for layer in network_size():
+    net = tf.contrib.slim.fully_connected(net, layer)
+
   if num_atoms is None:
     # We are constructing a DQN-style network.
     return tf.contrib.slim.fully_connected(net, num_actions, activation_fn=None)
@@ -304,9 +313,10 @@ def acrobot_rainbow_network(num_actions, num_atoms, support, network_type,
 class GymPreprocessing(object):
   """A Wrapper class around Gym environments."""
 
-  def __init__(self, environment):
+  def __init__(self, environment, render=False):
     self.environment = environment
     self.game_over = False
+    self.render = render
 
   @property
   def observation_space(self):
@@ -329,5 +339,8 @@ class GymPreprocessing(object):
 
   def step(self, action):
     observation, reward, game_over, info = self.environment.step(action)
+    if self.render:
+      self.environment.render()
+
     self.game_over = game_over
     return observation, reward, game_over, info
