@@ -1,5 +1,6 @@
 # coding=utf-8
 # Copyright 2018 The Dopamine Authors.
+# Modifications copyright 2019 Kacper Kielak
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +26,7 @@ import random
 
 
 
+from dopamine.abstract_ml_model import AbstractMLModel
 from dopamine.discrete_domains import atari_lib
 from dopamine.replay_memory import circular_replay_buffer
 import numpy as np
@@ -72,7 +74,7 @@ def identity_epsilon(unused_decay_period, unused_step, unused_warmup_steps,
 
 
 @gin.configurable
-class DQNAgent(object):
+class DQNAgent(AbstractMLModel):
   """An implementation of the DQN agent."""
 
   def __init__(self,
