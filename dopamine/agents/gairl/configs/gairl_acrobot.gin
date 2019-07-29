@@ -1,0 +1,45 @@
+# Hyperparameters for a simple DQN-style Acrobot agent. The hyperparameters
+# chosen achieve reasonable performance.
+import dopamine.discrete_domains.gym_lib
+import dopamine.discrete_domains.run_experiment
+import dopamine.agents.dqn.dqn_agent
+import dopamine.replay_memory.circular_replay_buffer
+import gin.tf.external_configurables
+
+DQNAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
+DQNAgent.observation_dtype = %gym_lib.ACROBOT_OBSERVATION_DTYPE
+DQNAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
+DQNAgent.network = @gym_lib.acrobot_dqn_network
+DQNAgent.gamma = 0.99
+DQNAgent.update_horizon = 1
+DQNAgent.min_replay_history = 1000
+DQNAgent.update_period = 4
+DQNAgent.target_update_period = 500
+DQNAgent.epsilon_fn = @dqn_agent.linearly_decaying_epsilon
+DQNAgent.epsilon_train = 0.05
+DQNAgent.epsilon_eval = 0.05
+DQNAgent.epsilon_decay_period = 10000
+DQNAgent.tf_device = '/cpu:*'  # use '/cpu:*' for non-GPU version
+DQNAgent.optimizer = @tf.train.GradientDescentOptimizer()
+network_size.size = [24, 24]
+
+GAIRLAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
+GAIRLAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
+GAIRLAgent.model_free_length = 20000
+GAIRLAgent.model_learning_length = 40000
+GAIRLAgent.model_based_length = 60000
+
+tf.train.GradientDescentOptimizer.learning_rate = 5e-3
+
+create_gym_environment.environment_name = 'Acrobot'
+create_gym_environment.version = 'v1'
+create_agent.agent_name = 'gairl'
+Runner.create_environment_fn = @gym_lib.create_gym_environment
+Runner.num_iterations = 100
+Runner.training_steps = 10000
+Runner.evaluation_steps = 5000
+Runner.max_steps_per_episode = 10000
+GymPreprocessing.render = True
+
+WrappedReplayBuffer.replay_capacity = 10000
+WrappedReplayBuffer.batch_size = 256
