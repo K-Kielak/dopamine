@@ -26,7 +26,7 @@ import random
 
 
 
-from dopamine.abstract_ml_model import AbstractMLModel
+from dopamine.agents.abstract_agent import AbstractAgent
 from dopamine.discrete_domains import atari_lib
 from dopamine.replay_memory import circular_replay_buffer
 import numpy as np
@@ -74,7 +74,7 @@ def identity_epsilon(unused_decay_period, unused_step, unused_warmup_steps,
 
 
 @gin.configurable
-class DQNAgent(AbstractMLModel):
+class DQNAgent(AbstractAgent):
   """An implementation of the DQN agent."""
 
   def __init__(self,
@@ -148,7 +148,6 @@ class DQNAgent(AbstractMLModel):
       allow_partial_reload: bool, whether we allow reloading a partial agent
         (for instance, only the network parameters).
     """
-    assert isinstance(observation_shape, tuple)
     tf.logging.info('Creating %s agent with the following parameters:',
                     self.__class__.__name__)
     tf.logging.info('\t gamma: %f', gamma)
@@ -165,10 +164,11 @@ class DQNAgent(AbstractMLModel):
     tf.logging.info('\t max_tf_checkpoints_to_keep: %d',
                     max_tf_checkpoints_to_keep)
 
-    self.num_actions = num_actions
-    self.observation_shape = tuple(observation_shape)
+    AbstractAgent.__init__(self,
+                           num_actions,
+                           observation_shape=observation_shape,
+                           stack_size=stack_size)
     self.observation_dtype = observation_dtype
-    self.stack_size = stack_size
     self.network = network
     self.gamma = gamma
     self.update_horizon = update_horizon
