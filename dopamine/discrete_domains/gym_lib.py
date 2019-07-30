@@ -51,14 +51,6 @@ gin.constant('gym_lib.ACROBOT_STACK_SIZE', 1)
 
 
 @gin.configurable
-def network_size(size=None):
-  if size is None:
-    return [512, 512]
-
-  return size
-
-
-@gin.configurable
 def create_gym_environment(environment_name=None, version='v0'):
   """Wraps a Gym environment with some basic preprocessing.
 
@@ -82,7 +74,7 @@ def create_gym_environment(environment_name=None, version='v0'):
 
 @gin.configurable
 def _basic_discrete_domain_network(min_vals, max_vals, num_actions, state,
-                                  num_atoms=None):
+                                  num_atoms=None, network_size=None):
   """Builds a basic network for discrete domains, rescaling inputs to [-1, 1].
 
   Args:
@@ -96,12 +88,15 @@ def _basic_discrete_domain_network(min_vals, max_vals, num_actions, state,
   Returns:
     The Q-values for DQN-style agents or logits for Rainbow-style agents.
   """
+  if network_size is None:
+    network_size = [512, 512]
+
   net = tf.cast(state, tf.float32)
   net = tf.contrib.slim.flatten(net)
   net -= min_vals
   net /= max_vals - min_vals
   net = 2.0 * net - 1.0  # Rescale in range [-1, 1].
-  for layer in network_size():
+  for layer in network_size:
     net = tf.contrib.slim.fully_connected(net, layer)
 
   if num_atoms is None:
@@ -114,7 +109,7 @@ def _basic_discrete_domain_network(min_vals, max_vals, num_actions, state,
 
 
 @gin.configurable
-def cartpole_dqn_network(num_actions, network_type, state):
+def cartpole_dqn_network(num_actions, network_type, state, network_size=None):
   """Builds the deep network used to compute the agent's Q-values.
 
   It rescales the input features to a range that yields improved performance.
@@ -127,8 +122,11 @@ def cartpole_dqn_network(num_actions, network_type, state):
   Returns:
     net: _network_type object containing the tensors output by the network.
   """
-  q_values = _basic_discrete_domain_network(
-      CARTPOLE_MIN_VALS, CARTPOLE_MAX_VALS, num_actions, state)
+  q_values = _basic_discrete_domain_network(CARTPOLE_MIN_VALS,
+                                            CARTPOLE_MAX_VALS,
+                                            num_actions,
+                                            state,
+                                            network_size=network_size)
   return network_type(q_values)
 
 
@@ -226,7 +224,7 @@ def cartpole_fourier_dqn_network(num_actions, network_type, state):
 
 @gin.configurable
 def cartpole_rainbow_network(num_actions, num_atoms, support, network_type,
-                             state):
+                             state, network_size=None):
   """Build the deep network used to compute the agent's Q-value distributions.
 
   Args:
@@ -239,9 +237,12 @@ def cartpole_rainbow_network(num_actions, num_atoms, support, network_type,
   Returns:
     net: _network_type object containing the tensors output by the network.
   """
-  net = _basic_discrete_domain_network(
-      CARTPOLE_MIN_VALS, CARTPOLE_MAX_VALS, num_actions, state,
-      num_atoms=num_atoms)
+  net = _basic_discrete_domain_network(CARTPOLE_MIN_VALS,
+                                       CARTPOLE_MAX_VALS,
+                                       num_actions,
+                                       state,
+                                       num_atoms=num_atoms,
+                                       network_size=network_size)
   logits = tf.reshape(net, [-1, num_actions, num_atoms])
   probabilities = tf.contrib.layers.softmax(logits)
   q_values = tf.reduce_sum(support * probabilities, axis=2)
@@ -249,7 +250,7 @@ def cartpole_rainbow_network(num_actions, num_atoms, support, network_type,
 
 
 @gin.configurable
-def acrobot_dqn_network(num_actions, network_type, state):
+def acrobot_dqn_network(num_actions, network_type, state, network_size=None):
   """Builds the deep network used to compute the agent's Q-values.
 
   It rescales the input features to a range that yields improved performance.
@@ -262,8 +263,9 @@ def acrobot_dqn_network(num_actions, network_type, state):
   Returns:
     net: _network_type object containing the tensors output by the network.
   """
-  q_values = _basic_discrete_domain_network(
-      ACROBOT_MIN_VALS, ACROBOT_MAX_VALS, num_actions, state)
+  q_values = _basic_discrete_domain_network(ACROBOT_MIN_VALS, ACROBOT_MAX_VALS,
+                                            num_actions, state,
+                                            network_size=network_size)
   return network_type(q_values)
 
 
@@ -288,7 +290,7 @@ def acrobot_fourier_dqn_network(num_actions, network_type, state):
 
 @gin.configurable
 def acrobot_rainbow_network(num_actions, num_atoms, support, network_type,
-                            state):
+                            state, network_size=None):
   """Build the deep network used to compute the agent's Q-value distributions.
 
   Args:
@@ -301,9 +303,12 @@ def acrobot_rainbow_network(num_actions, num_atoms, support, network_type,
   Returns:
     net: _network_type object containing the tensors output by the network.
   """
-  net = _basic_discrete_domain_network(
-      ACROBOT_MIN_VALS, ACROBOT_MAX_VALS, num_actions, state,
-      num_atoms=num_atoms)
+  net = _basic_discrete_domain_network(ACROBOT_MIN_VALS,
+                                       ACROBOT_MAX_VALS,
+                                       num_actions,
+                                       state,
+                                       num_atoms=num_atoms,
+                                       network_size=network_size)
   logits = tf.reshape(net, [-1, num_actions, num_atoms])
   probabilities = tf.contrib.layers.softmax(logits)
   q_values = tf.reduce_sum(support * probabilities, axis=2)

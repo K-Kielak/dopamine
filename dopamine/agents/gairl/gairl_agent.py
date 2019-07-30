@@ -225,7 +225,7 @@ class GAIRLAgent(AbstractAgent):
                     for (k, v) in state_bundle.items()}
 
     rewterm_path = os.path.join(checkpoint_dir, REWTERM_SUBDIR)
-    if not os.path.exists('rewterm'):
+    if not os.path.exists(rewterm_path):
       os.mkdir(rewterm_path)
     rewterm_bundle = self._rewterm_gen.bundle_and_checkpoint(rewterm_path,
                                                              iteration_number)

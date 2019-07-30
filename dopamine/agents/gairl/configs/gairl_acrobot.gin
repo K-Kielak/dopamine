@@ -21,7 +21,7 @@ DQNAgent.epsilon_eval = 0.05
 DQNAgent.epsilon_decay_period = 10000
 DQNAgent.tf_device = '/cpu:*'  # use '/cpu:*' for non-GPU version
 DQNAgent.optimizer = @tf.train.GradientDescentOptimizer()
-network_size.size = [24, 24]
+acrobot_dqn_network.network_size = [24, 24]
 
 GAIRLAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
 GAIRLAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
