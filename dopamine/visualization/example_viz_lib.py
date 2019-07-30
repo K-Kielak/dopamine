@@ -31,17 +31,17 @@ from __future__ import print_function
 
 import os
 
-from dopamine.agents.dqn import dqn_agent
-from dopamine.agents.rainbow import rainbow_agent
-from dopamine.discrete_domains import iteration_statistics
-from dopamine.discrete_domains import run_experiment
-from dopamine.utils import agent_visualizer
-from dopamine.utils import atari_plotter
-from dopamine.utils import bar_plotter
-from dopamine.utils import line_plotter
 import gin
 import numpy as np
 import tensorflow as tf
+
+from dopamine.agents.dqn import dqn_agent
+from dopamine.agents.rainbow import rainbow_agent
+from dopamine.discrete_domains import run_experiment
+from dopamine.utils import agent_visualizer, iteration_statistics
+from dopamine.utils import atari_plotter
+from dopamine.utils import bar_plotter
+from dopamine.utils import line_plotter
 
 
 class MyDQNAgent(dqn_agent.DQNAgent):

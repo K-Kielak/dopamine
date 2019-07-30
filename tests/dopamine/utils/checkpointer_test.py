@@ -21,11 +21,10 @@ from __future__ import print_function
 import os
 import shutil
 
-
-
-from absl import flags
-from dopamine.discrete_domains import checkpointer
 import tensorflow as tf
+from absl import flags
+
+from dopamine.utils import checkpointer
 
 FLAGS = flags.FLAGS
 

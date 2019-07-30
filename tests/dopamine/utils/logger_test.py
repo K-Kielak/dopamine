@@ -22,10 +22,10 @@ import os
 import pickle
 import shutil
 
-
-from absl import flags
-from dopamine.discrete_domains import logger
 import tensorflow as tf
+from absl import flags
+
+from dopamine.utils import logger
 
 FLAGS = flags.FLAGS
 

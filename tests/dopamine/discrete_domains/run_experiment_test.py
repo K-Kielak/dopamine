@@ -21,19 +21,17 @@ from __future__ import print_function
 import os
 import shutil
 
-
-
+import gin.tf
+import mock
+import tensorflow as tf
 from absl import flags
+
 from dopamine.agents.dqn import dqn_agent
 from dopamine.agents.implicit_quantile import implicit_quantile_agent
 from dopamine.agents.rainbow import rainbow_agent
-from dopamine.discrete_domains import checkpointer
-from dopamine.discrete_domains import logger
 from dopamine.discrete_domains import run_experiment
-import mock
-import tensorflow as tf
-
-import gin.tf
+from dopamine.utils import checkpointer
+from dopamine.utils import logger
 
 FLAGS = flags.FLAGS
 
