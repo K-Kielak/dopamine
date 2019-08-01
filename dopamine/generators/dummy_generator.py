@@ -16,16 +16,46 @@
 
 
 
-from dopamine.abstract_ml_model import AbstractMLModel
+from dopamine.generators.abstract_generator import AbstractGenerator
+import numpy as np
 import tensorflow as tf
 
 
-class DummyGenerator(AbstractMLModel):
+class DummyGenerator(AbstractGenerator):
   """An implementation of the dummy generator"""
 
-  def __init__(self):
-    """Initializes the generator"""
+  def __init__(self, output_shape):
+    """Initializes the generator
+
+    Args:
+      output_shape: tuple of ints specifying expected output shape.
+    """
     tf.logging.info('Creating %s', self.__class__.__name__)
+    self._output_shape = output_shape
+
+  def generate(self, input):
+    """Generates data based on the received input.
+
+    Args:
+      input: numpy array, input based on which generator should generate output.
+
+    Returns:
+      numpy array, randomly initialised values in the appropriate shape.
+    """
+    return np.random.rand(*self._output_shape)
+
+  def train(self, input, expected_output):
+    """Pretends to train the generator.
+
+    Args:
+      input: numpy array, input to the generator's network.
+      expected_output: numpy array, output that should be produced by the
+        generator given input.
+
+    Returns:
+      dict, empty train statistics.
+    """
+    return {}
 
   def bundle_and_checkpoint(self, checkpoint_dir, iteration_number):
     """Pretends to checkpoint the generator.

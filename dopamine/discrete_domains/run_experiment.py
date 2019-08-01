@@ -140,7 +140,7 @@ def create_generator(sess, environment, generator_name=None,
   if not debug_mode:
     summary_writer = None
   if generator_name == 'dummy':
-    return dummy_generator.DummyGenerator()
+    return dummy_generator.DummyGenerator(environment.observation_space.shape)
   else:
     raise ValueError('Unknown generator: {}'.format(generator_name))
 
