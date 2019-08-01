@@ -262,15 +262,15 @@ class GAIRLAgent(AbstractAgent):
     state_path = os.path.join(checkpoint_dir, STATE_SUBDIR)
     state_bundle = {k[:-2]: v for k, v in bundle_dictionary.items()
                     if k[-2:] == STATE_APPENDIX}
-    if not self._rl_agent.unbundle(state_path, iteration_number,
-                                   state_bundle):
+    if not self._state_gen.unbundle(state_path, iteration_number,
+                                    state_bundle):
       return False
 
     rewterm_path = os.path.join(checkpoint_dir, REWTERM_SUBDIR)
     rewterm_bundle = {k[:-2]: v for k, v in bundle_dictionary.items()
                       if k[-2:] == REWTERM_APPENDIX}
-    if not self._rl_agent.unbundle(rewterm_path, iteration_number,
-                                   rewterm_bundle):
+    if not self._rewterm_gen.unbundle(rewterm_path, iteration_number,
+                                      rewterm_bundle):
       return False
 
     return True
