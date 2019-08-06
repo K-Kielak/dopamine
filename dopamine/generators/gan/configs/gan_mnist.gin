@@ -1,0 +1,29 @@
+# Hyperparameters for a simple CMNIST regressor. The hyperparameters
+# chosen achieve reasonable performance.
+import dopamine.generative_tasks.gen_lib
+import dopamine.generative_tasks.run_task
+import dopamine.generators.regressor.regressor
+import gin.tf.external_configurables
+
+VanillaGAN.generator_network_fn = @gen_lib.mnist_generator_gan
+VanillaGAN.discriminator_network_fn = @gen_lib.mnist_discriminator_gan
+VanillaGAN.tf_device = '/gpu:0'  # use '/gpu:0' for GPU version
+VanillaGAN.g_optimizer = @g/tf.train.AdamOptimizer()
+VanillaGAN.d_optimizer = @d/tf.train.AdamOptimizer()
+VanillaGAN.k = 1
+VanillaGAN.summary_writing_frequency = 10
+mnist_generator_gan.network_size = (256, 512, 1024)
+mnist_discriminator_gan.network_size = (1024, 512, 256)
+mnist_discriminator_gan.dropout_keep_prob = 0.8
+
+g/tf.train.AdamOptimizer.learning_rate = 2e-4
+d/tf.train.AdamOptimizer.learning_rate = 6e-4
+
+load_data.task_name = 'mnist'
+create_generator.generator_name = 'vgan'
+create_generator.debug_mode = True
+Runner.num_iterations = 1000
+Runner.training_steps = 100
+Runner.batch_size = 128
+Runner.evaluation_size = 10
+
