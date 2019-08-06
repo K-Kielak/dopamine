@@ -85,7 +85,9 @@ def create_generator(sess, data_to_generate, inputs, generator_name=None,
   if generator_name == 'dummy':
     return dummy_generator.DummyGenerator(data_to_generate.shape[1:])
   elif generator_name == 'regressor':
-    return regressor.Regressor(sess, inputs.shape[1:],
+    assert inputs is not None
+    return regressor.Regressor(sess,
+                               inputs.shape[1:],
                                data_to_generate.shape[1:],
                                data_to_generate.dtype,
                                summary_writer=summary_writer)
@@ -224,7 +226,6 @@ class Runner(object):
       statistics: `IterationStatistics` object which records the experimental
         results. Note - This object is modified by this method.
     """
-
     start_time = time.time()
     mean_statistics = collections.defaultdict(int)
     for i in range(self._training_steps):
@@ -288,13 +289,13 @@ class Runner(object):
       generated_data: numpy array representing data saved during evaluation
         phase.
     """
-    print(generated_data.min(), generated_data.max())
     summaries = []
     for i, d in enumerate(generated_data):
       height, width, channel = d.shape
       if channel == 1:
         d = np.reshape(d, d.shape[0:2])
 
+      d = (d + 1) / 2  # Move pixel values from [-1, 1] to [0, 1] range
       d = np.clip(d * 255., 0., 255.)  # Scale image to the 0-255 range
       data_image = Image.fromarray(np.uint8(d))
       output = io.BytesIO()

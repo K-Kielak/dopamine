@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Compact implementation of a DQN agent."""
+"""Implementation of a basic feedforward regression network."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -53,7 +53,7 @@ class Regressor(AbstractGenerator):
       data_dtype: tf.DType, specifies the type of the data. Note that
         if your inputs are continuous, you should set this to tf.float32.
       network_fn: function expecting three parameters:
-        (input_shape, network_type, output_shape). This function will return
+        (input, output_shape). This function will return
         the object containing the tensors output by the network.
       tf_device: str, Tensorflow device on which the agent's graph is executed.
       max_tf_checkpoints_to_keep: int, the number of TensorFlow
@@ -76,7 +76,6 @@ class Regressor(AbstractGenerator):
     self.input_shape = input_shape
     self.output_shape = output_shape
     self.data_dtype = data_dtype
-    self.network_fn = network_fn
     self.training_steps = 0
     self.optimizer = optimizer
     self.summary_writer = summary_writer
@@ -90,17 +89,16 @@ class Regressor(AbstractGenerator):
                                       name='input_ph')
       self._expected_output_ph = tf.placeholder(self.data_dtype,
                                                 (None, *self.output_shape),
-                                                name='input_ph')
-      self._net_outputs = self.network_fn(self._input_ph, self.output_shape)
+                                                name='output_ph')
+      self._net_outputs = network_fn(self._input_ph, self.output_shape)
 
       # Build train op
-      self._loss = tf.losses.absolute_difference(self._expected_output_ph,
-                                                 self._net_outputs,
-                                                 reduction=tf.losses.Reduction.NONE)
+      expected_output = tf.cast(self._expected_output_ph, tf.float32)
+      self._loss = tf.abs(expected_output - self._net_outputs)
       self._loss = tf.reduce_mean(self._loss)
       if self.summary_writer is not None:
         with tf.variable_scope('Losses'):
-          tf.summary.scalar('L1 Loss', self._loss)
+          tf.summary.scalar('L1Loss', self._loss)
       self._train_op = self.optimizer.minimize(self._loss)
 
     if self.summary_writer is not None:
@@ -118,10 +116,7 @@ class Regressor(AbstractGenerator):
     Returns:
       numpy array, generated output.
     """
-    assert input.shape[1:] == self.input_shape, \
-      f'Expected ({self.input_shape}) and received ' \
-      f'({input.shape[1:]}), data shapes do not match'
-
+    assert input.shape[1:] == self.input_shape
     return self._sess.run(self._net_outputs, feed_dict={
       self._input_ph: input
     })

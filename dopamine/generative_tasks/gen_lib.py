@@ -68,9 +68,11 @@ def load_data(task_name=None):
   else:
     raise ValueError('Unknown task: {}'.format(task_name))
 
-  data = (data - data.min()) / (data.max() - data.min())
+  data = (data - data.min()) / (data.max() - data.min())  # Normalize
+  data = (data * 2) - 1  # Move to range [-1, 1]
   if inputs is not None:
-    inputs = (inputs - inputs.min()) / (inputs.max() - inputs.min())
+    inputs = (inputs - inputs.min()) / (inputs.max() - inputs.min())  # Normalize
+    inputs = (inputs * 2) - 1  # Move to range [-1, 1]
 
   return inputs, data
 
@@ -96,5 +98,5 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None):
     net = tf.contrib.slim.fully_connected(net, layer)
   output_size = np.prod(output_shape).item()
   net = tf.contrib.slim.fully_connected(net, output_size,
-                                        activation_fn=tf.nn.sigmoid)
+                                        activation_fn=tf.nn.tanh)
   return tf.reshape(net, [-1, *output_shape])
