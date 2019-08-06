@@ -31,6 +31,7 @@ import tensorflow as tf
 
 from dopamine.generative_tasks.gen_lib import load_data
 from dopamine.generators import dummy_generator
+from dopamine.generators.gan import gan
 from dopamine.generators.regressor import regressor
 from dopamine.utils import checkpointer
 from dopamine.utils import iteration_statistics
@@ -91,6 +92,13 @@ def create_generator(sess, data_to_generate, inputs, generator_name=None,
                                data_to_generate.shape[1:],
                                data_to_generate.dtype,
                                summary_writer=summary_writer)
+  elif generator_name == 'vgan':
+    input_shape = None if inputs is None else inputs.shape[1:]
+    return gan.VanillaGAN(sess,
+                          data_to_generate.shape[1:],
+                          data_to_generate.dtype,
+                          conditional_input_shape=input_shape,
+                          summary_writer=summary_writer)
   else:
     raise ValueError('Unknown generator: {}'.format(generator_name))
 
@@ -232,7 +240,7 @@ class Runner(object):
       batch_indices = np.random.randint(self._data_to_generate.shape[0],
                                         size=self._batch_size)
       batch_data = self._data_to_generate[batch_indices, :]
-      batch_inputs = None
+      batch_inputs = self._batch_size
       if self._inputs is not None:
         batch_inputs = self._inputs[batch_indices, :]
 

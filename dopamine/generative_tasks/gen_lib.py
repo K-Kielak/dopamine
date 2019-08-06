@@ -100,3 +100,106 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None):
   net = tf.contrib.slim.fully_connected(net, output_size,
                                         activation_fn=tf.nn.tanh)
   return tf.reshape(net, [-1, *output_shape])
+
+
+@gin.configurable
+def mnist_generator_gan(noise, conditional_input, output_shape,
+                        network_size=None):
+  """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
+
+  Args:
+    noise: `tf.Tensor`, the network noise input.
+    conditional_input: `tf.Tensor`, the network conditional input. None if
+      the conditional input won't be used.
+    output_shape: tuple of ints representing dimensions of the output
+    network_size: tuple of ints representing dimensions of the network.
+
+  Returns:
+    The tensor containing generated data.
+  """
+  if network_size is None:
+    network_size = (256, 512, 1024)
+
+  assert len(network_size) > 0
+
+  initializer = tf.initializers.truncated_normal(mean=0, stddev=1e-3)
+  net = tf.cast(noise, tf.float32)
+  net = tf.contrib.slim.flatten(net)
+  net = tf.contrib.slim.fully_connected(net, network_size[0],
+                                        activation_fn=tf.nn.leaky_relu,
+                                        weights_initializer=initializer,
+                                        biases_initializer=initializer)
+  if conditional_input is not None:
+    cond_net = tf.cast(conditional_input, tf.float32)
+    cond_net = tf.contrib.slim.flatten(cond_net)
+    cond_net = tf.contrib.slim.fully_connected(cond_net, network_size[0],
+                                               activation_fn=tf.nn.leaky_relu,
+                                               weights_initializer=initializer,
+                                               biases_initializer=initializer)
+    net = net + cond_net  # Add results of both in the first hidden layer
+
+  for layer in network_size[1:]:
+    net = tf.contrib.slim.fully_connected(net, layer,
+                                          activation_fn=tf.nn.leaky_relu,
+                                          weights_initializer=initializer,
+                                          biases_initializer=initializer)
+  output_size = np.prod(output_shape).item()
+  net = tf.contrib.slim.fully_connected(net, output_size,
+                                        activation_fn=tf.nn.tanh,
+                                        weights_initializer=initializer,
+                                        biases_initializer=initializer)
+  return tf.reshape(net, [-1, *output_shape])
+
+
+@gin.configurable
+def mnist_discriminator_gan(conditional_input, output, network_size=None,
+                            dropout_keep_prob=0.8):
+  """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
+
+  Args:
+    conditional_input: `tf.Tensor`, the network conditional input. None if
+      the conditional input won't be used.
+    output: `tf.Tensor`, tensor containing data to discriminate.
+    network_size: tuple of ints representing dimensions of the network.
+    dropout_keep_prob: float, probability of keeping the element in dropout
+      layers.
+
+  Returns:
+    The tensor containing logit of the discrimination (before sigmoid).
+  """
+  if network_size is None:
+    network_size = (1024, 512, 256)
+
+  assert len(network_size) > 0
+  assert 0. <= dropout_keep_prob < 1
+
+  initializer = tf.initializers.truncated_normal(mean=0, stddev=1e-3)
+  net = tf.cast(output, tf.float32)
+  net = tf.contrib.slim.flatten(net)
+  net = tf.contrib.slim.fully_connected(net, network_size[0],
+                                        activation_fn=tf.nn.leaky_relu,
+                                        weights_initializer=initializer,
+                                        biases_initializer=initializer)
+  if conditional_input is not None:
+    cond_net = tf.cast(conditional_input, tf.float32)
+    cond_net = tf.contrib.slim.flatten(cond_net)
+    cond_net = tf.contrib.slim.fully_connected(cond_net, network_size[0],
+                                               activation_fn=tf.nn.leaky_relu,
+                                               weights_initializer=initializer,
+                                               biases_initializer=initializer)
+    net = net + cond_net  # Add results of both in the first hidden layer
+
+  for layer in network_size[1:]:
+    net = tf.contrib.slim.dropout(net, keep_prob=dropout_keep_prob)
+    net = tf.contrib.slim.fully_connected(net, layer,
+                                          activation_fn=tf.nn.leaky_relu,
+                                          weights_initializer=initializer,
+                                          biases_initializer=initializer)
+
+  net = tf.contrib.slim.dropout(net, keep_prob=dropout_keep_prob)
+  output_size = 1
+  logit = tf.contrib.slim.fully_connected(net, output_size,
+                                          activation_fn=None,
+                                          weights_initializer=initializer,
+                                          biases_initializer=initializer)
+  return logit
