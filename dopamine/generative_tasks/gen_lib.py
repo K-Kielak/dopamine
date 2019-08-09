@@ -171,7 +171,7 @@ def mnist_discriminator_gan(conditional_input, output, network_size=None,
     network_size = (1024, 512, 256)
 
   assert len(network_size) > 0
-  assert 0. <= dropout_keep_prob < 1
+  assert 0. < dropout_keep_prob <= 1
 
   initializer = tf.initializers.truncated_normal(mean=0, stddev=1e-3)
   net = tf.cast(output, tf.float32)

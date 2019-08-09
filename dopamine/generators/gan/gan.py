@@ -94,6 +94,8 @@ class VanillaGAN(AbstractGenerator):
     self.data_dtype = data_dtype
     self.conditional_input_shape = conditional_input_shape
     self.noise_shape = noise_shape
+    self.generator_network_fn = generator_network_fn
+    self.discriminator_network_fn = discriminator_network_fn
     self.training_steps = 0
     self.g_optimizer = g_optimizer
     self.d_optimizer = d_optimizer
@@ -103,79 +105,52 @@ class VanillaGAN(AbstractGenerator):
     self.allow_partial_reload = allow_partial_reload
 
     with tf.device(tf_device):
-      # Build network
-      if self.conditional_input_shape is None:
-        self._input_ph = tf.placeholder(tf.int32, (), name='batch_size_ph')
-        noise = tf.random.normal((self._input_ph, *self.noise_shape),
-                                 name='noise')
-        conditional_input = None
-      else:
-        self._input_ph = tf.placeholder(self.data_dtype,
-                                        (None, *self.conditional_input_shape),
-                                        name='input_ph')
-        noise = tf.random.normal((tf.shape(self._input_ph)[0],
-                                  *self.noise_shape),
-                                 name='noise')
-        conditional_input = self._input_ph
-
-      self._real_output_ph = tf.placeholder(self.data_dtype,
-                                            (None, *self.output_shape),
-                                            name='output_ph')
-      with tf.variable_scope(GENERATOR_SCOPE):
-        self._generator_outputs = generator_network_fn(
-          noise, conditional_input, output_shape
-        )
-      with tf.variable_scope(DISCRIMINATOR_SCOPE):
-        self._gen_discrimination_logits = discriminator_network_fn(
-          conditional_input, self._generator_outputs
-        )
-      with tf.variable_scope(DISCRIMINATOR_SCOPE, reuse=True):
-        self._real_discrimination_logits = discriminator_network_fn(
-          conditional_input, self._real_output_ph
-        )
-
-      # Build train op
+      self._build_networks()
       self._generator_loss = self._define_generator_loss()
       self._discriminator_loss = self._define_discriminator_loss()
-      generator_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                         scope=GENERATOR_SCOPE)
-      discriminator_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                             scope=DISCRIMINATOR_SCOPE)
-      g_grads = self.g_optimizer.compute_gradients(
-        self._generator_loss, var_list=generator_vars
-      )
-      self._g_train_op = self.g_optimizer.apply_gradients(g_grads)
-      d_grads = self.d_optimizer.compute_gradients(
-        self._discriminator_loss, var_list=discriminator_vars
-      )
-      self._d_train_op = self.d_optimizer.apply_gradients(d_grads)
-
-      real_output = tf.cast(self._real_output_ph, tf.float32)
-      self._l1_loss = tf.abs(real_output - self._generator_outputs)
-      self._l1_loss = tf.reduce_mean(self._l1_loss)
-      if self.summary_writer is not None:
-        with tf.variable_scope('Losses'):
-          tf.summary.scalar('GeneratorLoss', self._generator_loss)
-          tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss)
-          tf.summary.scalar('L1Loss', self._l1_loss)
-        with tf.variable_scope('Discriminations'):
-          real_discrimination = tf.nn.sigmoid(self._real_discrimination_logits)
-          real_discrimination = tf.reduce_mean(real_discrimination)
-          tf.summary.scalar('RealDiscrimination', real_discrimination)
-          gen_discrimination = tf.nn.sigmoid(self._gen_discrimination_logits)
-          gen_discrimination = tf.reduce_mean(gen_discrimination)
-          tf.summary.scalar('GeneratedDiscrimination', gen_discrimination)
-        with tf.variable_scope('Gradients'):
-          [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-           for grad, var in g_grads]
-          [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-           for grad, var in d_grads]
+      self._build_generator_train_op()
+      self._build_discriminator_train_op()
+      self._create_summaries()
 
     if self.summary_writer is not None:
       # All tf.summaries should have been defined prior to running this.
       self._merged_summaries = tf.summary.merge_all()
     self._sess = sess
     self._saver = tf.train.Saver(max_to_keep=max_tf_checkpoints_to_keep)
+
+  def _build_networks(self):
+    # Define inputs
+    if self.conditional_input_shape is None:
+      self._input_ph = tf.placeholder(tf.int32, (), name='batch_size_ph')
+      noise = tf.random.normal((self._input_ph, *self.noise_shape),
+                               name='noise')
+      self._conditional_input = None
+    else:
+      self._input_ph = tf.placeholder(self.data_dtype,
+                                      (None, *self.conditional_input_shape),
+                                      name='input_ph')
+      noise = tf.random.normal((tf.shape(self._input_ph)[0],
+                                *self.noise_shape),
+                               name='noise')
+      self._conditional_input = self._input_ph
+
+    self._real_output_ph = tf.placeholder(self.data_dtype,
+                                          (None, *self.output_shape),
+                                          name='output_ph')
+
+    # Build networks
+    with tf.variable_scope(GENERATOR_SCOPE):
+      self._generator_outputs = self.generator_network_fn(
+        noise, self._conditional_input, self.output_shape
+      )
+    with tf.variable_scope(DISCRIMINATOR_SCOPE):
+      self._gen_discriminator_out = self.discriminator_network_fn(
+        self._conditional_input, self._generator_outputs
+      )
+    with tf.variable_scope(DISCRIMINATOR_SCOPE, reuse=True):
+      self._real_discriminator_out = self.discriminator_network_fn(
+        self._conditional_input, self._real_output_ph
+      )
 
   def _define_generator_loss(self):
     """Defines loss for the generator network.
@@ -187,8 +162,8 @@ class VanillaGAN(AbstractGenerator):
     Returns: Tensor containing generator loss value.
     """
     loss = tf.nn.sigmoid_cross_entropy_with_logits(
-      labels=tf.ones_like(self._gen_discrimination_logits),
-      logits=self._gen_discrimination_logits,
+      labels=tf.ones_like(self._gen_discriminator_out),
+      logits=self._gen_discriminator_out,
     )
     return tf.reduce_mean(loss, name='generator_loss')
 
@@ -196,23 +171,62 @@ class VanillaGAN(AbstractGenerator):
     """Defines loss for the discriminator network.
 
     For vanilla GAN, discriminator loss is defined by:
-      max log(real_discrimination) + log(1 - fake_discrimination) =
-      min -log(real_discrimination) - log(1 - fake_discrimination)
+      max log(real_discrimination) + log(1 - gen_discrimination) =
+      min -log(real_discrimination) - log(1 - gen_discrimination)
 
     Returns: Tensor containing discriminator loss value.
     """
-
     real_d_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-      labels=tf.ones_like(self._real_discrimination_logits),
-      logits=self._real_discrimination_logits
+      labels=tf.ones_like(self._real_discriminator_out),
+      logits=self._real_discriminator_out
     )
     real_d_loss = tf.reduce_mean(real_d_loss, name='real_discriminator_loss')
     gen_d_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-      labels=tf.zeros_like(self._gen_discrimination_logits),
-      logits=self._gen_discrimination_logits
+      labels=tf.zeros_like(self._gen_discriminator_out),
+      logits=self._gen_discriminator_out
     )
     gen_d_loss = tf.reduce_mean(gen_d_loss, name='gen_discriminator_loss')
     return tf.add(real_d_loss, gen_d_loss, name='discrminator_loss')
+
+  def _build_generator_train_op(self):
+    generator_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                       scope=GENERATOR_SCOPE)
+    self._g_grads = self.g_optimizer.compute_gradients(
+      self._generator_loss,
+      var_list=generator_vars + self.g_optimizer.variables()
+    )
+    self._g_train_op = self.g_optimizer.apply_gradients(self._g_grads)
+
+  def _build_discriminator_train_op(self):
+    discriminator_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+                                           scope=DISCRIMINATOR_SCOPE)
+    self._d_grads = self.d_optimizer.compute_gradients(
+      self._discriminator_loss,
+      var_list=discriminator_vars + self.d_optimizer.variables()
+    )
+    self._d_train_op = self.d_optimizer.apply_gradients(self._d_grads)
+
+  def _create_summaries(self):
+      real_output = tf.cast(self._real_output_ph, tf.float32)
+      self._l1_loss = tf.abs(real_output - self._generator_outputs)
+      self._l1_loss = tf.reduce_mean(self._l1_loss)
+      if self.summary_writer is not None:
+        with tf.variable_scope('Losses'):
+          tf.summary.scalar('GeneratorLoss', self._generator_loss)
+          tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss)
+          tf.summary.scalar('L1Loss', self._l1_loss)
+        with tf.variable_scope('Discriminations'):
+          real_discrimination = tf.nn.sigmoid(self._real_discriminator_out)
+          real_discrimination = tf.reduce_mean(real_discrimination)
+          tf.summary.scalar('RealDiscrimination', real_discrimination)
+          gen_discrimination = tf.nn.sigmoid(self._gen_discriminator_out)
+          gen_discrimination = tf.reduce_mean(gen_discrimination)
+          tf.summary.scalar('GeneratedDiscrimination', gen_discrimination)
+        with tf.variable_scope('Gradients'):
+          [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
+           for grad, var in self._g_grads]
+          [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
+           for grad, var in self._d_grads]
 
   def generate(self, input):
     """Generates data based on the received input.
@@ -245,10 +259,9 @@ class VanillaGAN(AbstractGenerator):
       dict, train statistics consisting of generator, discriminator, and L1
         loss.
     """
-    assert isinstance(input, int) or \
-           input.shape[1:] == self.conditional_input_shape
-    assert input == expected_output.shape[0] or \
-           input.shape[0] == expected_output.shape[0]
+    assert (isinstance(input, int) and input == expected_output.shape[0]) or \
+           (input.shape[1:] == self.conditional_input_shape and
+            input.shape[0] == expected_output.shape[0])
 
     # Train discriminator
     _, g_loss, d_loss, l1_loss = self._sess.run(
@@ -327,7 +340,7 @@ class VanillaGAN(AbstractGenerator):
     elif not self.allow_partial_reload:
       return False
     else:
-      tf.logging.warning("Unable to reload the agent's parameters!")
+      tf.logging.warning("Unable to reload the generator's parameters!")
     # Restore the agent's TensorFlow graph.
     self._saver.restore(self._sess,
                         os.path.join(checkpoint_dir,
