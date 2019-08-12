@@ -7,14 +7,16 @@ import gin.tf.external_configurables
 
 VanillaGAN.generator_network_fn = @gen_lib.mnist_generator_gan
 VanillaGAN.discriminator_network_fn = @gen_lib.mnist_discriminator_gan
-VanillaGAN.tf_device = '/gpu:0'  # use '/gpu:0' for GPU version
+VanillaGAN.tf_device = '/cpu:*'  # use '/gpu:0' for GPU version
 VanillaGAN.g_optimizer = @g/tf.train.AdamOptimizer()
 VanillaGAN.d_optimizer = @d/tf.train.AdamOptimizer()
 VanillaGAN.k = 1
 VanillaGAN.summary_writing_frequency = 10
 mnist_generator_gan.network_size = (256, 512, 1024)
+mnist_generator_gan.batch_norm = True
 mnist_discriminator_gan.network_size = (1024, 512, 256)
 mnist_discriminator_gan.dropout_keep_prob = 0.8
+mnist_discriminator_gan.batch_norm = True
 
 g/tf.train.AdamOptimizer.learning_rate = 2e-4
 d/tf.train.AdamOptimizer.learning_rate = 6e-4

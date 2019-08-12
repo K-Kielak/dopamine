@@ -104,7 +104,7 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None):
 
 @gin.configurable
 def mnist_generator_gan(noise, conditional_input, output_shape,
-                        network_size=None):
+                        network_size=None, batch_norm=False):
   """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
 
   Args:
@@ -113,6 +113,7 @@ def mnist_generator_gan(noise, conditional_input, output_shape,
       the conditional input won't be used.
     output_shape: tuple of ints representing dimensions of the output
     network_size: tuple of ints representing dimensions of the network.
+    batch_norm: boolean, specifies if batch normalization should be used.
 
   Returns:
     The tensor containing generated data.
@@ -123,24 +124,29 @@ def mnist_generator_gan(noise, conditional_input, output_shape,
   assert len(network_size) > 0
 
   initializer = tf.initializers.truncated_normal(mean=0, stddev=1e-3)
+  normalizer_fn = tf.layers.batch_normalization if batch_norm else None
   net = tf.cast(noise, tf.float32)
   net = tf.contrib.slim.flatten(net)
   net = tf.contrib.slim.fully_connected(net, network_size[0],
-                                        activation_fn=tf.nn.leaky_relu,
+                                        activation_fn=None,
                                         weights_initializer=initializer,
                                         biases_initializer=initializer)
   if conditional_input is not None:
     cond_net = tf.cast(conditional_input, tf.float32)
     cond_net = tf.contrib.slim.flatten(cond_net)
     cond_net = tf.contrib.slim.fully_connected(cond_net, network_size[0],
-                                               activation_fn=tf.nn.leaky_relu,
+                                               activation_fn=None,
                                                weights_initializer=initializer,
                                                biases_initializer=initializer)
     net = net + cond_net  # Add results of both in the first hidden layer
 
+  if batch_norm:
+    net = normalizer_fn(net)
+  net = tf.nn.leaky_relu(net)
   for layer in network_size[1:]:
     net = tf.contrib.slim.fully_connected(net, layer,
                                           activation_fn=tf.nn.leaky_relu,
+                                          normalizer_fn=normalizer_fn,
                                           weights_initializer=initializer,
                                           biases_initializer=initializer)
   output_size = np.prod(output_shape).item()
@@ -153,7 +159,7 @@ def mnist_generator_gan(noise, conditional_input, output_shape,
 
 @gin.configurable
 def mnist_discriminator_gan(conditional_input, output, network_size=None,
-                            dropout_keep_prob=0.8):
+                            dropout_keep_prob=0.8, batch_norm=False):
   """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
 
   Args:
@@ -163,6 +169,7 @@ def mnist_discriminator_gan(conditional_input, output, network_size=None,
     network_size: tuple of ints representing dimensions of the network.
     dropout_keep_prob: float, probability of keeping the element in dropout
       layers.
+    batch_norm: boolean, specifies if batch normalization should be used.
 
   Returns:
     The tensor containing logit of the discrimination (before sigmoid).
@@ -174,25 +181,28 @@ def mnist_discriminator_gan(conditional_input, output, network_size=None,
   assert 0. < dropout_keep_prob <= 1
 
   initializer = tf.initializers.truncated_normal(mean=0, stddev=1e-3)
+  normalizer_fn = tf.layers.batch_normalization if batch_norm else None
   net = tf.cast(output, tf.float32)
   net = tf.contrib.slim.flatten(net)
   net = tf.contrib.slim.fully_connected(net, network_size[0],
-                                        activation_fn=tf.nn.leaky_relu,
+                                        activation_fn=None,
                                         weights_initializer=initializer,
                                         biases_initializer=initializer)
   if conditional_input is not None:
     cond_net = tf.cast(conditional_input, tf.float32)
     cond_net = tf.contrib.slim.flatten(cond_net)
     cond_net = tf.contrib.slim.fully_connected(cond_net, network_size[0],
-                                               activation_fn=tf.nn.leaky_relu,
+                                               activation_fn=None,
                                                weights_initializer=initializer,
                                                biases_initializer=initializer)
     net = net + cond_net  # Add results of both in the first hidden layer
 
+  net = tf.nn.leaky_relu(net)
   for layer in network_size[1:]:
     net = tf.contrib.slim.dropout(net, keep_prob=dropout_keep_prob)
     net = tf.contrib.slim.fully_connected(net, layer,
                                           activation_fn=tf.nn.leaky_relu,
+                                          normalizer_fn=normalizer_fn,
                                           weights_initializer=initializer,
                                           biases_initializer=initializer)
 
