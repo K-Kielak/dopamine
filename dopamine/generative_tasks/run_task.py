@@ -34,6 +34,7 @@ from dopamine.generators import dummy_generator
 from dopamine.generators.gan import gan
 from dopamine.generators.regressor import regressor
 from dopamine.generators.wgan import wgan
+from dopamine.generators.wgan_gp import wgan_gp
 from dopamine.utils import checkpointer
 from dopamine.utils import iteration_statistics
 from dopamine.utils import logger
@@ -104,6 +105,12 @@ def create_generator(sess, data_to_generate, inputs, generator_name=None,
                                data_to_generate.shape[1:],
                                conditional_input_shape=input_shape,
                                summary_writer=summary_writer)
+  elif generator_name == 'wgan_gp':
+    input_shape = None if inputs is None else inputs.shape[1:]
+    return wgan_gp.WassersteinGANGP(sess,
+                                    data_to_generate.shape[1:],
+                                    conditional_input_shape=input_shape,
+                                    summary_writer=summary_writer)
   else:
     raise ValueError('Unknown generator: {}'.format(generator_name))
 
