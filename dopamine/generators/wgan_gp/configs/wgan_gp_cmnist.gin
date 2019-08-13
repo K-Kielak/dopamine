@@ -1,0 +1,33 @@
+# Hyperparameters for an MNIST WGANGP. The hyperparameters
+# chosen achieve reasonable performance.
+import dopamine.generative_tasks.gen_lib
+import dopamine.generative_tasks.run_task
+import dopamine.generators.wgan_gp.wgan_gp
+import gin.tf.external_configurables
+
+WassersteinGANGP.generator_network_fn = @gen_lib.mnist_generator_gan
+WassersteinGANGP.discriminator_network_fn = @gen_lib.mnist_discriminator_gan
+WassersteinGANGP.tf_device = '/cpu:*'  # use '/gpu:0' for GPU version
+WassersteinGANGP.g_optimizer = @g/tf.train.AdamOptimizer()
+WassersteinGANGP.d_optimizer = @d/tf.train.AdamOptimizer()
+WassersteinGANGP.k = 10
+WassersteinGANGP.penalty_coeff = 10
+WassersteinGANGP.summary_writing_frequency = 50
+mnist_generator_gan.network_size = (256, 512, 1024)
+mnist_discriminator_gan.network_size = (1024, 1024, 1024)
+mnist_discriminator_gan.dropout_keep_prob = 1
+
+g/tf.train.AdamOptimizer.learning_rate = 2e-4
+g/tf.train.AdamOptimizer.beta1 = 0.5
+g/tf.train.AdamOptimizer.beta2 = 0.9
+d/tf.train.AdamOptimizer.learning_rate = 2e-4
+d/tf.train.AdamOptimizer.beta1 = 0.5
+d/tf.train.AdamOptimizer.beta2 = 0.9
+
+load_data.task_name = 'cmnist'
+create_generator.generator_name = 'wgan_gp'
+create_generator.debug_mode = True
+Runner.num_iterations = 50000
+Runner.training_steps = 100
+Runner.batch_size = 128
+Runner.evaluation_inputs = %gen_lib.MNIST_EVALUATION_INPUTS
