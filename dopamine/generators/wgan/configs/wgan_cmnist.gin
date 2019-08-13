@@ -1,0 +1,35 @@
+# Hyperparameters for an cMNIST WGAN. The hyperparameters
+# chosen achieve reasonable performance.
+import dopamine.generative_tasks.gen_lib
+import dopamine.generative_tasks.run_task
+import dopamine.generators.wgan.wgan
+import gin.tf.external_configurables
+
+WassersteinGAN.generator_network_fn = @gen_lib.mnist_generator_gan
+WassersteinGAN.discriminator_network_fn = @gen_lib.mnist_discriminator_gan
+WassersteinGAN.tf_device = '/cpu:*'  # use '/gpu:0' for GPU version
+WassersteinGAN.g_optimizer = @g/tf.train.AdamOptimizer()
+WassersteinGAN.d_optimizer = @d/tf.train.AdamOptimizer()
+WassersteinGAN.k = 10
+WassersteinGAN.weights_clip = 0.03
+WassersteinGAN.summary_writing_frequency = 50
+mnist_generator_gan.network_size = (256, 512, 1024)
+mnist_generator_gan.batch_norm = True
+mnist_discriminator_gan.network_size = (1024, 1024, 1024)
+mnist_discriminator_gan.dropout_keep_prob = 1
+mnist_discriminator_gan.batch_norm = True
+
+g/tf.train.AdamOptimizer.learning_rate = 2e-4
+g/tf.train.AdamOptimizer.beta1 = 0.5
+g/tf.train.AdamOptimizer.beta2 = 0.9
+d/tf.train.AdamOptimizer.learning_rate = 2e-4
+d/tf.train.AdamOptimizer.beta1 = 0.5
+d/tf.train.AdamOptimizer.beta2 = 0.9
+
+load_data.task_name = 'cmnist'
+create_generator.generator_name = 'wgan'
+create_generator.debug_mode = True
+Runner.num_iterations = 50000
+Runner.training_steps = 100
+Runner.batch_size = 128
+Runner.evaluation_inputs = %gen_lib.MNIST_EVALUATION_INPUTS
