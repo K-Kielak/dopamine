@@ -40,7 +40,7 @@ class VanillaGAN(AbstractGenerator):
   def __init__(self,
                sess,
                output_shape,
-               data_dtype,
+               processing_dtype=tf.float32,
                conditional_input_shape=None,
                noise_shape=(100,),
                generator_network_fn=gen_lib.mnist_generator_gan,
@@ -58,13 +58,14 @@ class VanillaGAN(AbstractGenerator):
     Args:
       sess: `tf.Session`, for executing ops.
       output_shape: tuple of ints describing the output shape.
-      data_dtype: tf.DType, specifies the type of the data. Note that
-        if your inputs are continuous, you should set this to tf.float32.
+      processing_dtype: tf.DType, specifies the type used to processing data.
+        Note that it should be some type of float (e.g. tf.float32 or tf.float64).
       conditional_input_shape: tuple of ints describing the conditional input
         shape. If None, no conditional input will be provided.
       generator_network_fn: function expecting three parameters:
-        (noise, conditional_input, output_shape). This function will return
-        the object containing the tensors output by the generator network.
+        (noise, conditional_input, output_shape).
+        This function will returnv the object containing the tensors output by
+        the generator network.
       discriminator_network_fn: function expecting three parameters:
         (conditional_input, output). This function will return
         the object containing the tensor output by the discriminator network,
@@ -91,7 +92,7 @@ class VanillaGAN(AbstractGenerator):
                     max_tf_checkpoints_to_keep)
 
     self.output_shape = output_shape
-    self.data_dtype = data_dtype
+    self.processing_dtype = processing_dtype
     self.conditional_input_shape = conditional_input_shape
     self.noise_shape = noise_shape
     self.generator_network_fn = generator_network_fn
@@ -123,18 +124,17 @@ class VanillaGAN(AbstractGenerator):
     if self.conditional_input_shape is None:
       self._input_ph = tf.placeholder(tf.int32, (), name='batch_size_ph')
       noise = tf.random.normal((self._input_ph, *self.noise_shape),
-                               name='noise')
+                               name='noise', dtype=self.processing_dtype)
       self._conditional_input = None
     else:
-      self._input_ph = tf.placeholder(self.data_dtype,
+      self._input_ph = tf.placeholder(self.processing_dtype,
                                       (None, *self.conditional_input_shape),
                                       name='input_ph')
-      noise = tf.random.normal((tf.shape(self._input_ph)[0],
-                                *self.noise_shape),
-                               name='noise')
+      noise = tf.random.normal((tf.shape(self._input_ph)[0], *self.noise_shape),
+                               name='noise', dtype=self.processing_dtype)
       self._conditional_input = self._input_ph
 
-    self._real_output_ph = tf.placeholder(self.data_dtype,
+    self._real_output_ph = tf.placeholder(self.processing_dtype,
                                           (None, *self.output_shape),
                                           name='output_ph')
 
@@ -207,26 +207,25 @@ class VanillaGAN(AbstractGenerator):
     self._d_train_op = self.d_optimizer.apply_gradients(self._d_grads)
 
   def _create_summaries(self):
-      real_output = tf.cast(self._real_output_ph, tf.float32)
-      self._l1_loss = tf.abs(real_output - self._generator_outputs)
-      self._l1_loss = tf.reduce_mean(self._l1_loss)
-      if self.summary_writer is not None:
-        with tf.variable_scope('Losses'):
-          tf.summary.scalar('GeneratorLoss', self._generator_loss)
-          tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss)
-          tf.summary.scalar('L1Loss', self._l1_loss)
-        with tf.variable_scope('Discriminations'):
-          real_discrimination = tf.nn.sigmoid(self._real_discriminator_out)
-          real_discrimination = tf.reduce_mean(real_discrimination)
-          tf.summary.scalar('RealDiscrimination', real_discrimination)
-          gen_discrimination = tf.nn.sigmoid(self._gen_discriminator_out)
-          gen_discrimination = tf.reduce_mean(gen_discrimination)
-          tf.summary.scalar('GeneratedDiscrimination', gen_discrimination)
-        with tf.variable_scope('Gradients'):
-          [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-           for grad, var in self._g_grads]
-          [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-           for grad, var in self._d_grads]
+    self._l1_loss = tf.abs(self._real_output_ph - self._generator_outputs)
+    self._l1_loss = tf.reduce_mean(self._l1_loss)
+    if self.summary_writer is not None:
+      with tf.variable_scope('Losses'):
+        tf.summary.scalar('GeneratorLoss', self._generator_loss)
+        tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss)
+        tf.summary.scalar('L1Loss', self._l1_loss)
+      with tf.variable_scope('Discriminations'):
+        real_discrimination = tf.nn.sigmoid(self._real_discriminator_out)
+        real_discrimination = tf.reduce_mean(real_discrimination)
+        tf.summary.scalar('RealDiscrimination', real_discrimination)
+        gen_discrimination = tf.nn.sigmoid(self._gen_discriminator_out)
+        gen_discrimination = tf.reduce_mean(gen_discrimination)
+        tf.summary.scalar('GeneratedDiscrimination', gen_discrimination)
+      with tf.variable_scope('Gradients'):
+        [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
+         for grad, var in self._g_grads]
+        [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
+         for grad, var in self._d_grads]
 
   def generate(self, input):
     """Generates data based on the received input.

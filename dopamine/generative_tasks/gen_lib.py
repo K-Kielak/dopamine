@@ -92,8 +92,7 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None):
   if network_size is None:
     network_size = (256, 512, 1024)
 
-  net = tf.cast(inputs, tf.float32)
-  net = tf.contrib.slim.flatten(net)
+  net = tf.contrib.slim.flatten(inputs)
   for layer in network_size:
     net = tf.contrib.slim.fully_connected(net, layer)
   output_size = np.prod(output_shape).item()
@@ -125,8 +124,7 @@ def mnist_generator_gan(noise, conditional_input, output_shape,
 
   initializer = tf.initializers.truncated_normal(mean=0, stddev=1e-3)
   normalizer_fn = tf.layers.batch_normalization if batch_norm else None
-  net = tf.cast(noise, tf.float32)
-  net = tf.contrib.slim.flatten(net)
+  net = tf.contrib.slim.flatten(noise)
   net = tf.contrib.slim.fully_connected(net, network_size[0],
                                         activation_fn=None,
                                         weights_initializer=initializer,
@@ -182,15 +180,13 @@ def mnist_discriminator_gan(conditional_input, output, network_size=None,
 
   initializer = tf.initializers.truncated_normal(mean=0, stddev=1e-3)
   normalizer_fn = tf.layers.batch_normalization if batch_norm else None
-  net = tf.cast(output, tf.float32)
-  net = tf.contrib.slim.flatten(net)
+  net = tf.contrib.slim.flatten(output)
   net = tf.contrib.slim.fully_connected(net, network_size[0],
                                         activation_fn=None,
                                         weights_initializer=initializer,
                                         biases_initializer=initializer)
   if conditional_input is not None:
-    cond_net = tf.cast(conditional_input, tf.float32)
-    cond_net = tf.contrib.slim.flatten(cond_net)
+    cond_net = tf.contrib.slim.flatten(conditional_input)
     cond_net = tf.contrib.slim.fully_connected(cond_net, network_size[0],
                                                activation_fn=None,
                                                weights_initializer=initializer,

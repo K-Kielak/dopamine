@@ -36,7 +36,7 @@ class Regressor(AbstractGenerator):
                sess,
                input_shape,
                output_shape,
-               data_dtype,
+               processing_dtype=tf.float32,
                network_fn=gen_lib.mnist_regressor_mlp,
                tf_device='/cpu:*',
                max_tf_checkpoints_to_keep=4,
@@ -50,8 +50,8 @@ class Regressor(AbstractGenerator):
       sess: `tf.Session`, for executing ops.
       input_shape: tuple of ints describing the input shape
       output_shape: tuple of ints describing the output shape.
-      data_dtype: tf.DType, specifies the type of the data. Note that
-        if your inputs are continuous, you should set this to tf.float32.
+      processing_dtype: tf.DType, specifies the type used to processing data.
+        Note that it should be some type of float (e.g. tf.float32 or tf.float64).
       network_fn: function expecting three parameters:
         (input, output_shape). This function will return
         the object containing the tensors output by the network.
@@ -75,7 +75,7 @@ class Regressor(AbstractGenerator):
 
     self.input_shape = input_shape
     self.output_shape = output_shape
-    self.data_dtype = data_dtype
+    self.processing_dtype = processing_dtype
     self.training_steps = 0
     self.optimizer = optimizer
     self.summary_writer = summary_writer
@@ -84,17 +84,16 @@ class Regressor(AbstractGenerator):
 
     with tf.device(tf_device):
       # Build network
-      self._input_ph = tf.placeholder(self.data_dtype,
+      self._input_ph = tf.placeholder(self.processing_dtype,
                                       (None, *self.input_shape),
                                       name='input_ph')
-      self._expected_output_ph = tf.placeholder(self.data_dtype,
+      self._expected_output_ph = tf.placeholder(self.processing_dtype,
                                                 (None, *self.output_shape),
                                                 name='output_ph')
       self._net_outputs = network_fn(self._input_ph, self.output_shape)
 
       # Build train op
-      expected_output = tf.cast(self._expected_output_ph, tf.float32)
-      self._loss = tf.abs(expected_output - self._net_outputs)
+      self._loss = tf.abs(self._expected_output_ph - self._net_outputs)
       self._loss = tf.reduce_mean(self._loss)
       if self.summary_writer is not None:
         with tf.variable_scope('Losses'):

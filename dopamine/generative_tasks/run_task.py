@@ -90,13 +90,11 @@ def create_generator(sess, data_to_generate, inputs, generator_name=None,
     return regressor.Regressor(sess,
                                inputs.shape[1:],
                                data_to_generate.shape[1:],
-                               data_to_generate.dtype,
                                summary_writer=summary_writer)
   elif generator_name == 'vgan':
     input_shape = None if inputs is None else inputs.shape[1:]
     return gan.VanillaGAN(sess,
                           data_to_generate.shape[1:],
-                          data_to_generate.dtype,
                           conditional_input_shape=input_shape,
                           summary_writer=summary_writer)
   else:
