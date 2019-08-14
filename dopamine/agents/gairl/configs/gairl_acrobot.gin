@@ -6,6 +6,15 @@ import dopamine.agents.dqn.dqn_agent
 import dopamine.replay_memory.circular_replay_buffer
 import gin.tf.external_configurables
 
+GAIRLAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
+GAIRLAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
+GAIRLAgent.model_free_length = 20000
+GAIRLAgent.model_learning_length = 40000
+GAIRLAgent.model_based_length = 60000
+GAIRLAgent.train_memory_capacity = 40000
+GAIRLAgent.test_memory_capacity = 10000
+GAIRLAgent.memory_batch_size = 256
+
 DQNAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
 DQNAgent.observation_dtype = %gym_lib.ACROBOT_OBSERVATION_DTYPE
 DQNAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
@@ -23,17 +32,14 @@ DQNAgent.tf_device = '/cpu:*'  # use '/cpu:*' for non-GPU version
 DQNAgent.optimizer = @tf.train.GradientDescentOptimizer()
 acrobot_dqn_network.network_size = [24, 24]
 
-GAIRLAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
-GAIRLAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
-GAIRLAgent.model_free_length = 20000
-GAIRLAgent.model_learning_length = 40000
-GAIRLAgent.model_based_length = 60000
-
 tf.train.GradientDescentOptimizer.learning_rate = 5e-3
 
 create_gym_environment.environment_name = 'Acrobot'
 create_gym_environment.version = 'v1'
 create_agent.agent_name = 'gairl'
+create_agent.gairl_rl_agent_name = 'dqn'
+create_agent.gairl_state_gen_name = 'dummy'
+create_agent.gairl_rewterm_gen_name = 'dummy'
 Runner.create_environment_fn = @gym_lib.create_gym_environment
 Runner.num_iterations = 100
 Runner.training_steps = 10000

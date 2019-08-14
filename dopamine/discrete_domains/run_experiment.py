@@ -54,8 +54,8 @@ def load_gin_configs(gin_files, gin_bindings):
 
 @gin.configurable
 def create_agent(sess, environment, agent_name=None, summary_writer=None,
-                 debug_mode=False, gairl_rl_agent_name='dqn',
-                 gairl_state_gen_name='dummy', gairl_rewterm_gen_name='dummy'):
+                 debug_mode=False, gairl_rl_agent_name=None,
+                 gairl_state_gen_name=None, gairl_rewterm_gen_name=None):
   """Creates an agent.
 
   Args:
