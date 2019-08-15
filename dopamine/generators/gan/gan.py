@@ -41,7 +41,7 @@ class VanillaGAN(AbstractGenerator):
                sess,
                output_shape,
                processing_dtype=tf.float32,
-               conditional_input_shape=None,
+               conditional_input_shapes=None,
                noise_shape=(100,),
                generator_network_fn=gen_lib.mnist_generator_gan,
                discriminator_network_fn=gen_lib.mnist_discriminator_gan,
@@ -60,14 +60,15 @@ class VanillaGAN(AbstractGenerator):
       output_shape: tuple of ints describing the output shape.
       processing_dtype: tf.DType, specifies the type used to processing data.
         Note that it should be some type of float (e.g. tf.float32 or tf.float64).
-      conditional_input_shape: tuple of ints describing the conditional input
-        shape. If None, no conditional input will be provided.
+      conditional_input_shapes: tuple of tuples of ints describing the
+        conditional input shapes (there may be more than one input). None in
+        case of no conditional inputs.
       generator_network_fn: function expecting three parameters:
-        (noise, conditional_input, output_shape).
+        (noise, conditional_inputs, output_shape).
         This function will returnv the object containing the tensors output by
         the generator network.
       discriminator_network_fn: function expecting three parameters:
-        (conditional_input, output). This function will return
+        (conditional_inputs, output). This function will return
         the object containing the tensor output by the discriminator network,
         and the tensor containing its logit.
       tf_device: str, Tensorflow device on which the agent's graph is executed.
@@ -83,6 +84,7 @@ class VanillaGAN(AbstractGenerator):
       allow_partial_reload: bool, whether we allow reloading a partial agent
         (for instance, only the network parameters).
     """
+    assert conditional_input_shapes != ()
     tf.logging.info('Creating %s generator with the following parameters:',
                     self.__class__.__name__)
     tf.logging.info('\t tf_device: %s', tf_device)
@@ -93,7 +95,7 @@ class VanillaGAN(AbstractGenerator):
 
     self.output_shape = output_shape
     self.processing_dtype = processing_dtype
-    self.conditional_input_shape = conditional_input_shape
+    self.conditional_input_shapes = conditional_input_shapes
     self.noise_shape = noise_shape
     self.generator_network_fn = generator_network_fn
     self.discriminator_network_fn = discriminator_network_fn
@@ -121,18 +123,21 @@ class VanillaGAN(AbstractGenerator):
 
   def _build_networks(self):
     # Define inputs
-    if self.conditional_input_shape is None:
-      self._input_ph = tf.placeholder(tf.int32, (), name='batch_size_ph')
-      noise = tf.random.normal((self._input_ph, *self.noise_shape),
+    if self.conditional_input_shapes is None:
+      self._input_phs = [tf.placeholder(tf.int32, (), name='batch_size_ph')]
+      noise = tf.random.normal((self._input_phs[0], *self.noise_shape),
                                name='noise', dtype=self.processing_dtype)
-      self._conditional_input = None
+      self._conditional_inputs = ()
     else:
-      self._input_ph = tf.placeholder(self.processing_dtype,
-                                      (None, *self.conditional_input_shape),
-                                      name='input_ph')
-      noise = tf.random.normal((tf.shape(self._input_ph)[0], *self.noise_shape),
+      self._input_phs = []
+      for i, shape in enumerate(self.conditional_input_shapes):
+        ph = tf.placeholder(self.processing_dtype, (None, *shape),
+                            name=f'input_{i}')
+        self._input_phs.append(ph)
+
+      noise = tf.random.normal((tf.shape(ph)[0], *self.noise_shape),
                                name='noise', dtype=self.processing_dtype)
-      self._conditional_input = self._input_ph
+      self._conditional_inputs = self._input_phs
 
     self._real_output_ph = tf.placeholder(self.processing_dtype,
                                           (None, *self.output_shape),
@@ -141,15 +146,15 @@ class VanillaGAN(AbstractGenerator):
     # Build networks
     with tf.variable_scope(GENERATOR_SCOPE):
       self._generator_outputs = self.generator_network_fn(
-        noise, self._conditional_input, self.output_shape
+        noise, self._conditional_inputs, self.output_shape
       )
     with tf.variable_scope(DISCRIMINATOR_SCOPE):
       self._gen_discriminator_out = self.discriminator_network_fn(
-        self._conditional_input, self._generator_outputs
+        self._conditional_inputs, self._generator_outputs
       )
     with tf.variable_scope(DISCRIMINATOR_SCOPE, reuse=True):
       self._real_discriminator_out = self.discriminator_network_fn(
-        self._conditional_input, self._real_output_ph
+        self._conditional_inputs, self._real_output_ph
       )
 
   def _define_generator_loss(self):
@@ -227,30 +232,29 @@ class VanillaGAN(AbstractGenerator):
         [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
          for grad, var in self._d_grads]
 
-  def generate(self, input):
+  def generate(self, inputs):
     """Generates data based on the received input.
 
     Args:
-      input: numpy array, input based on which generator should generate
-        output. Should be an integer specifying the batch size if the generator
-        doesn't accept conditional inputs.
+      inputs: list of numpy arrays or list of a single integer, input based on
+        which generator should generate output. Should be an integer specifying
+        the batch size if the generator doesn't accept conditional inputs.
 
     Returns:
       numpy array, generated output.
     """
-    assert isinstance(input, int) or \
-           input.shape[1:] == self.conditional_input_shape
-    return self._sess.run(self._generator_outputs, feed_dict={
-      self._input_ph: input
-    })
+    assert len(self._input_phs) == len(inputs)
 
-  def train(self, input, expected_output):
+    feed_dict = {ph: i for ph, i in zip(self._input_phs, inputs)}
+    return self._sess.run(self._generator_outputs, feed_dict=feed_dict)
+
+  def train(self, inputs, expected_output):
     """Performs one training step based on the received training batch.
 
     Args:
-      input: numpy array, input to the generator's network. Should be an
-        integer specifying the batch size if the generator doesn't accept
-        conditional inputs.
+      inputs: list of numpy arrays or list of a single integer, input to the
+        generator's network. Should be an integer specifying the batch size
+        if the generator doesn't accept conditional inputs.
       expected_output: numpy array, output that should be produced by the
         generator given input.
 
@@ -258,26 +262,25 @@ class VanillaGAN(AbstractGenerator):
       dict, train statistics consisting of generator, discriminator, and L1
         loss.
     """
-    assert (isinstance(input, int) and input == expected_output.shape[0]) or \
-           (input.shape[1:] == self.conditional_input_shape and
-            input.shape[0] == expected_output.shape[0])
+    assert len(self._input_phs) == len(inputs)
 
     # Train discriminator
+    inputs_feed_dict = {ph: i for ph, i in zip(self._input_phs, inputs)}
     _, g_loss, d_loss, l1_loss = self._sess.run(
       [self._d_train_op, self._generator_loss,
        self._discriminator_loss, self._l1_loss],
-      feed_dict={self._input_ph: input, self._real_output_ph: expected_output})
+      feed_dict={**inputs_feed_dict, self._real_output_ph: expected_output})
 
     if self.training_steps % self.k == 0:
       self._sess.run(self._g_train_op, feed_dict={
-        self._input_ph: input,
+        **inputs_feed_dict,
         self._real_output_ph: expected_output
       })
 
     if (self.summary_writer is not None and self.training_steps > 0 and
         self.training_steps % self.summary_writing_frequency == 0):
       summary = self._sess.run(self._merged_summaries, feed_dict={
-        self._input_ph: input,
+        **inputs_feed_dict,
         self._real_output_ph: expected_output
       })
       self.summary_writer.add_summary(summary, self.training_steps)

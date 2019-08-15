@@ -34,7 +34,7 @@ class Regressor(AbstractGenerator):
 
   def __init__(self,
                sess,
-               input_shape,
+               input_shapes,
                output_shape,
                processing_dtype=tf.float32,
                network_fn=gen_lib.mnist_regressor_mlp,
@@ -48,12 +48,12 @@ class Regressor(AbstractGenerator):
 
     Args:
       sess: `tf.Session`, for executing ops.
-      input_shape: tuple of ints describing the input shape
+      input_shapes: tuple of tuples of ints describing the input shape
       output_shape: tuple of ints describing the output shape.
       processing_dtype: tf.DType, specifies the type used to processing data.
         Note that it should be some type of float (e.g. tf.float32 or tf.float64).
       network_fn: function expecting three parameters:
-        (input, output_shape). This function will return
+        (inputs, output_shape). This function will return
         the object containing the tensors output by the network.
       tf_device: str, Tensorflow device on which the agent's graph is executed.
       max_tf_checkpoints_to_keep: int, the number of TensorFlow
@@ -73,7 +73,7 @@ class Regressor(AbstractGenerator):
     tf.logging.info('\t max_tf_checkpoints_to_keep: %d',
                     max_tf_checkpoints_to_keep)
 
-    self.input_shape = input_shape
+    self.input_shapes = input_shapes
     self.output_shape = output_shape
     self.processing_dtype = processing_dtype
     self.training_steps = 0
@@ -84,13 +84,16 @@ class Regressor(AbstractGenerator):
 
     with tf.device(tf_device):
       # Build network
-      self._input_ph = tf.placeholder(self.processing_dtype,
-                                      (None, *self.input_shape),
-                                      name='input_ph')
+      self._input_phs = []
+      for i, shape in enumerate(self.input_shapes):
+        ph = tf.placeholder(self.processing_dtype, (None, *shape),
+                            name=f'input_{i}')
+        self._input_phs.append(ph)
+
       self._expected_output_ph = tf.placeholder(self.processing_dtype,
                                                 (None, *self.output_shape),
                                                 name='output_ph')
-      self._net_outputs = network_fn(self._input_ph, self.output_shape)
+      self._net_outputs = network_fn(self._input_phs, self.output_shape)
 
       # Build train op
       self._loss = tf.abs(self._expected_output_ph - self._net_outputs)
@@ -106,41 +109,42 @@ class Regressor(AbstractGenerator):
     self._sess = sess
     self._saver = tf.train.Saver(max_to_keep=max_tf_checkpoints_to_keep)
 
-  def generate(self, input):
+  def generate(self, inputs):
     """Generates data based on the received input
 
     Args:
-      input: numpy array, input based on which generator should generate output.
+      inputs: tuple of numpy arrays, input based on which generator should
+        generate output.
 
     Returns:
       numpy array, generated output.
     """
-    assert input.shape[1:] == self.input_shape
-    return self._sess.run(self._net_outputs, feed_dict={
-      self._input_ph: input
-    })
+    assert len(self._input_phs) == len(inputs)
+    feed_dict = {ph: i for ph, i in zip(self._input_phs, inputs)}
+    return self._sess.run(self._net_outputs, feed_dict=feed_dict)
 
-  def train(self, input, expected_output):
+  def train(self, inputs, expected_output):
     """Performs one training step based on the received training batch.
 
     Args:
-      input: numpy array, input to the generator's network.
+      inputs: tuple of numpy arrays, input to the generator's network.
       expected_output: numpy array, output that should be produced by the
         generator given input.
 
     Returns:
       dict, train statistics consisting of loss only.
     """
-    assert input.shape[0] == expected_output.shape[0]
+    assert len(self._input_phs) == len(inputs)
+    inputs_feed_dict = {ph: i for ph, i in zip(self._input_phs, inputs)}
     loss, _ = self._sess.run([self._loss, self._train_op], feed_dict={
-      self._input_ph: input,
+      **inputs_feed_dict,
       self._expected_output_ph: expected_output
     })
 
     if (self.summary_writer is not None and self.training_steps > 0 and
        self.training_steps % self.summary_writing_frequency == 0):
       summary = self._sess.run(self._merged_summaries, feed_dict={
-        self._input_ph: input,
+        **inputs_feed_dict,
         self._expected_output_ph: expected_output
       })
       self.summary_writer.add_summary(summary, self.training_steps)

@@ -33,22 +33,23 @@ class DummyGenerator(AbstractGenerator):
     tf.logging.info('Creating %s', self.__class__.__name__)
     self._output_shape = output_shape
 
-  def generate(self, input):
+  def generate(self, inputs):
     """Generates data based on the received input.
 
     Args:
-      input: numpy array, input based on which generator should generate output.
+      inputs: tuple of numpy arrays, input based on which generator should
+        generate output.
 
     Returns:
       numpy array, randomly initialised values in the appropriate shape.
     """
     return np.random.rand(*self._output_shape)
 
-  def train(self, input, expected_output):
+  def train(self, inputs, expected_output):
     """Pretends to train the generator.
 
     Args:
-      input: numpy array, input to the generator's network.
+      inputs: tuple of numpy arrays, input to the generator's network.
       expected_output: numpy array, output that should be produced by the
         generator given input.
 

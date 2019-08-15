@@ -37,7 +37,7 @@ class WassersteinGAN(gan.VanillaGAN):
                sess,
                output_shape,
                processing_dtype=tf.float32,
-               conditional_input_shape=None,
+               conditional_input_shapes=None,
                noise_shape=(100,),
                generator_network_fn=gen_lib.mnist_generator_gan,
                discriminator_network_fn=gen_lib.mnist_discriminator_gan,
@@ -57,13 +57,14 @@ class WassersteinGAN(gan.VanillaGAN):
       output_shape: tuple of ints describing the output shape.
       processing_dtype: tf.DType, specifies the type used to processing data.
         Note that it should be some type of float (e.g. tf.float32 or tf.float64).
-      conditional_input_shape: tuple of ints describing the conditional input
-        shape. If None, no conditional input will be provided.
+      conditional_input_shapes: tuple of tuples of ints describing the
+        conditional input shapes (there may be more than one input). None in
+        case of no conditional inputs.
       generator_network_fn: function expecting three parameters:
-        (noise, conditional_input, output_shape). This function will return
+        (noise, conditional_inputs, output_shape). This function will return
         the object containing the tensors output by the generator network.
       discriminator_network_fn: function expecting three parameters:
-        (conditional_input, output). This function will return
+        (conditional_inputs, output). This function will return
         the object containing the tensor output by the discriminator network,
         and the tensor containing its logit.
       tf_device: str, Tensorflow device on which the agent's graph is executed.
@@ -87,7 +88,7 @@ class WassersteinGAN(gan.VanillaGAN):
                             sess,
                             output_shape,
                             processing_dtype=processing_dtype,
-                            conditional_input_shape=conditional_input_shape,
+                            conditional_input_shapes=conditional_input_shapes,
                             noise_shape=noise_shape,
                             generator_network_fn=generator_network_fn,
                             discriminator_network_fn=discriminator_network_fn,

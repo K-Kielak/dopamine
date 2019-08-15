@@ -90,26 +90,26 @@ def create_generator(sess, data_to_generate, inputs, generator_name=None,
   elif generator_name == 'regressor':
     assert inputs is not None
     return regressor.Regressor(sess,
-                               inputs.shape[1:],
+                               (inputs.shape[1:],),
                                data_to_generate.shape[1:],
                                summary_writer=summary_writer)
   elif generator_name == 'vgan':
-    input_shape = None if inputs is None else inputs.shape[1:]
+    input_shapes = None if inputs is None else (inputs.shape[1:],)
     return gan.VanillaGAN(sess,
                           data_to_generate.shape[1:],
-                          conditional_input_shape=input_shape,
+                          conditional_input_shapes=input_shapes,
                           summary_writer=summary_writer)
   elif generator_name == 'wgan':
-    input_shape = None if inputs is None else inputs.shape[1:]
+    input_shapes = None if inputs is None else (inputs.shape[1:],)
     return wgan.WassersteinGAN(sess,
                                data_to_generate.shape[1:],
-                               conditional_input_shape=input_shape,
+                               conditional_input_shapes=input_shapes,
                                summary_writer=summary_writer)
   elif generator_name == 'wgan_gp':
-    input_shape = None if inputs is None else inputs.shape[1:]
+    input_shapes = None if inputs is None else (inputs.shape[1:],)
     return wgan_gp.WassersteinGANGP(sess,
                                     data_to_generate.shape[1:],
-                                    conditional_input_shape=input_shape,
+                                    conditional_input_shapes=input_shapes,
                                     summary_writer=summary_writer)
   else:
     raise ValueError('Unknown generator: {}'.format(generator_name))
@@ -252,9 +252,9 @@ class Runner(object):
       batch_indices = np.random.randint(self._data_to_generate.shape[0],
                                         size=self._batch_size)
       batch_data = self._data_to_generate[batch_indices, :]
-      batch_inputs = self._batch_size
+      batch_inputs = (self._batch_size,)
       if self._inputs is not None:
-        batch_inputs = self._inputs[batch_indices, :]
+        batch_inputs = (self._inputs[batch_indices, :],)
 
       batch_statistics = self._generator.train(batch_inputs, batch_data)
       for k, v in batch_statistics.items():
@@ -275,9 +275,9 @@ class Runner(object):
     """
     # Perform the evaluation phase -- no learning.
     if self._evaluation_inputs is None:
-      return self._generator.generate(self._evaluation_size)
+      return self._generator.generate((self._evaluation_size,))
     if self._evaluation_size is None:
-      return self._generator.generate(self._evaluation_inputs)
+      return self._generator.generate((self._evaluation_inputs,))
 
     indices = np.random.randint(self._evaluation_inputs.shape[0],
                                 size=self._evaluation_size)

@@ -24,11 +24,12 @@ from dopamine.abstract_ml_model import AbstractMLModel
 class AbstractGenerator(AbstractMLModel):
 
   @abstractmethod
-  def generate(self, input):
+  def generate(self, inputs):
     """Generates data based on the received input
 
     Args:
-      input: numpy array, input based on which generator should generate output.
+      inputs: tuple of numpy arrays, input based on which generator should
+        generate output.
 
     Returns:
       numpy array, generated output.
@@ -36,11 +37,11 @@ class AbstractGenerator(AbstractMLModel):
     pass
 
   @abstractmethod
-  def train(self, input, expected_output):
+  def train(self, inputs, expected_output):
     """Performs one training step based on the received training batch.
 
     Args:
-      input: numpy array, input to the generator's network.
+      inputs: tuple of numpy arrays, input to the generator's network.
       expected_output: numpy array, output that should be produced by the
         generator given input.
 
