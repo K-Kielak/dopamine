@@ -8,8 +8,9 @@ import gin.tf.external_configurables
 
 GAIRLAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
 GAIRLAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
-GAIRLAgent.model_free_length = 20000
-GAIRLAgent.model_learning_length = 40000
+GAIRLAgent.model_free_length = 15000
+GAIRLAgent.model_learning_length = 2000
+GAIRLAgent.model_learning_logging_frequency = 100
 GAIRLAgent.model_based_length = 60000
 GAIRLAgent.train_memory_capacity = 40000
 GAIRLAgent.test_memory_capacity = 10000

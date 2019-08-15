@@ -14,8 +14,10 @@
 # limitations under the License.
 """Implementation of the GAIRL framework"""
 
+import collections
 import os
 import random
+import time
 
 
 
@@ -38,6 +40,10 @@ TRAIN_MEM_SUBDIR = 'train_mem'
 TEST_MEM_SUBDIR = 'test_mem'
 
 
+def dict_to_str(d):
+  return ', '.join([f'{k}: {v}' for k, v in d.items()])
+
+
 @gin.configurable
 class GAIRLAgent(AbstractAgent):
   """An implementation of the GAIRL agent."""
@@ -52,6 +58,7 @@ class GAIRLAgent(AbstractAgent):
                stack_size=atari_lib.NATURE_DQN_STACK_SIZE,
                model_free_length=10000,
                model_learning_length=50000,
+               model_learning_logging_frequency=100,
                model_based_length=50000,
                train_memory_capacity=40000,
                test_memory_capacity=10000,
@@ -107,6 +114,7 @@ class GAIRLAgent(AbstractAgent):
     self.model_free_length = model_free_length
     self.model_learning_steps = 0
     self.model_learning_length = model_learning_length
+    self.model_learning_logging_frequency = model_learning_logging_frequency
     self.model_based_steps = 0
     self.model_based_length = model_based_length
     state_shape = (1,) + self.observation_shape + (stack_size,)
@@ -255,7 +263,45 @@ class GAIRLAgent(AbstractAgent):
       self._train_model_based()
 
   def _train_generators(self):
-    pass
+    """Run model learning phase - train generative models"""
+    tf.logging.info('***Starting model learning phase.***')
+    start_time = time.time()
+    mean_statistics = collections.defaultdict(int)
+    while True:
+      # Prepare data
+      batch_data = self._train_memory.sample_transition_batch()
+      batch_inputs = batch_data[:2]  # states and actions
+      batch_next_state = batch_data[3]
+      batch_rewterm = np.vstack((batch_data[2], batch_data[6]))
+
+      # Train models
+      state_statistics = self.state_gen.train(batch_inputs, batch_next_state)
+      rewterm_statistics = self.rewterm_gen.train(batch_inputs, batch_rewterm)
+      for k, v in state_statistics.items():
+        weighted_value = v / self.model_learning_logging_frequency
+        mean_statistics[f'mean_state_{k}'] += weighted_value
+      for k, v in rewterm_statistics.items():
+        weighted_value = v / self.model_learning_logging_frequency
+        mean_statistics[f'mean_rewterm_{k}'] += weighted_value
+
+      self.model_learning_steps += 1
+
+      # Log
+      if self.model_learning_steps % self.model_learning_logging_frequency == 0:
+        time_delta = time.time() - start_time
+        tf.logging.info('Step: %d', self.model_learning_steps)
+        tf.logging.info('Average statistics per training: %s',
+                        dict_to_str(mean_statistics))
+        tf.logging.info('Average training steps per second: %.2f',
+                        self.model_learning_logging_frequency / time_delta)
+        start_time = time.time()
+        mean_statistics = collections.defaultdict(int)
+
+      # Stop training after specified
+      if self.model_learning_steps % self.model_learning_length == 0:
+        break
+
+    tf.logging.info('***Finished model learning phase.***')
 
   def _train_model_based(self):
     pass
