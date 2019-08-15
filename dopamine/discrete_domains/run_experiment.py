@@ -32,7 +32,6 @@ from dopamine.agents.gairl import gairl_agent
 from dopamine.agents.implicit_quantile import implicit_quantile_agent
 from dopamine.agents.rainbow import rainbow_agent
 from dopamine.discrete_domains import atari_lib
-from dopamine.generators import dummy_generator
 from dopamine.utils import checkpointer
 from dopamine.utils import iteration_statistics
 from dopamine.utils import logger
@@ -54,8 +53,7 @@ def load_gin_configs(gin_files, gin_bindings):
 
 @gin.configurable
 def create_agent(sess, environment, agent_name=None, summary_writer=None,
-                 debug_mode=False, gairl_rl_agent_name=None,
-                 gairl_state_gen_name=None, gairl_rewterm_gen_name=None):
+                 debug_mode=False):
   """Creates an agent.
 
   Args:
@@ -67,13 +65,6 @@ def create_agent(sess, environment, agent_name=None, summary_writer=None,
     debug_mode: bool, whether to output Tensorboard summaries. If set to true,
       the agent will output in-episode statistics to Tensorboard. Disabled by
       default as this results in slower training.
-    gairl_rl_agent_name: str, name of the model-free agent module to create
-      when the chosen agent is GAIRL (only used when agent_name='gairl')
-    gairl_state_gen_name: str, name of the generative model used for generating
-      states when the chosen agent is GAIRL (only used when agent_name='gairl')
-    gairl_rewterm_gen_name: str, name of the generative model used for
-      generating reward and terminal signal when the chosen agent is GAIRL
-      (only used when agent_name='gairl')
 
   Returns:
     agent: An RL agent.
@@ -97,52 +88,11 @@ def create_agent(sess, environment, agent_name=None, summary_writer=None,
         sess, num_actions=environment.action_space.n,
         summary_writer=summary_writer)
   elif agent_name == 'gairl':
-    rl_agent = create_agent(sess, environment,
-                            agent_name=gairl_rl_agent_name,
-                            summary_writer=summary_writer,
-                            debug_mode=debug_mode)
-    state_gen = create_generator(sess, environment,
-                                 generator_name=gairl_state_gen_name,
-                                 summary_writer=summary_writer,
-                                 debug_mode=debug_mode)
-    rewterm_gen = create_generator(sess, environment,
-                                   generator_name=gairl_rewterm_gen_name,
-                                   summary_writer=summary_writer,
-                                   debug_mode=debug_mode)
-    return gairl_agent.GAIRLAgent(rl_agent, state_gen, rewterm_gen,
-                                  num_actions=environment.action_space.n)
+    return gairl_agent.GAIRLAgent(
+        sess,  num_actions=environment.action_space.n,
+        summary_writer=summary_writer)
   else:
     raise ValueError('Unknown agent: {}'.format(agent_name))
-
-
-@gin.configurable
-def create_generator(sess, environment, generator_name=None,
-                     summary_writer=None, debug_mode=False):
-  """Creates a generator.
-
-  Args:
-    sess: A `tf.Session` object for running associated ops.
-    environment: A gym environment (e.g. Atari 2600).
-    generator_name: str, name of the generator to create.
-    summary_writer: A Tensorflow summary writer to pass to the agent
-      for in-agent training statistics in Tensorboard.
-    debug_mode: bool, whether to output Tensorboard summaries. If set to true,
-      the agent will output in-episode statistics to Tensorboard. Disabled by
-      default as this results in slower training.
-
-  Returns:
-    generator: A generator.
-
-  Raises:
-    ValueError: If `generator_name` is not in supported list.
-  """
-  assert generator_name is not None
-  if not debug_mode:
-    summary_writer = None
-  if generator_name == 'dummy':
-    return dummy_generator.DummyGenerator(environment.observation_space.shape)
-  else:
-    raise ValueError('Unknown generator: {}'.format(generator_name))
 
 
 @gin.configurable

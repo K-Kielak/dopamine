@@ -22,7 +22,15 @@ import time
 
 
 from dopamine.agents.abstract_agent import AbstractAgent
+from dopamine.agents.dqn import dqn_agent
+from dopamine.agents.implicit_quantile import implicit_quantile_agent
+from dopamine.agents.rainbow import rainbow_agent
 from dopamine.discrete_domains import atari_lib
+from dopamine.generators import dummy_generator
+from dopamine.generators.gan import gan
+from dopamine.generators.regressor import regressor
+from dopamine.generators.wgan import wgan
+from dopamine.generators.wgan_gp import wgan_gp
 from dopamine.replay_memory import circular_replay_buffer
 import numpy as np
 import tensorflow as tf
@@ -45,14 +53,103 @@ def dict_to_str(d):
 
 
 @gin.configurable
+def create_agent(sess, agent_name, num_actions,
+                 observation_shape=atari_lib.NATURE_DQN_OBSERVATION_SHAPE,
+                 observation_dtype=atari_lib.NATURE_DQN_DTYPE,
+                 stack_size=atari_lib.NATURE_DQN_STACK_SIZE,
+                 summary_writer=None):
+  """Creates an agent.
+
+  Args:
+    sess: A `tf.Session` object for running associated ops.
+    agent_name: str, name of the agent to create.
+    num_actions: int, number of actions the agent can take at any state.
+    summary_writer: A Tensorflow summary writer to pass to the agent
+      for in-agent training statistics in Tensorboard.
+    observation_shape: tuple of ints describing the observation shape.
+    observation_dtype: tf.DType, specifies the type of the observations. Note
+      that if your inputs are continuous, you should set this to tf.float32.
+    stack_size: int, number of frames to use in state stack.
+
+  Returns:
+    agent: An RL agent.
+
+  Raises:
+    ValueError: If `agent_name` is not in supported list or one of the
+      GAIRL submodules is not in supported list when the chosen agent is GAIRL.
+  """
+  if agent_name == 'dqn':
+    return dqn_agent.DQNAgent(
+      sess, num_actions, observation_shape=observation_shape,
+      observation_dtype=observation_dtype, stack_size=stack_size,
+      summary_writer=summary_writer
+    )
+  elif agent_name == 'rainbow':
+    return rainbow_agent.RainbowAgent(
+      sess, num_actions, observation_shape=observation_shape,
+      observation_dtype=observation_dtype, stack_size=stack_size,
+      summary_writer=summary_writer
+    )
+  elif agent_name == 'implicit_quantile':
+    return implicit_quantile_agent.ImplicitQuantileAgent(
+      sess, num_actions, summary_writer=summary_writer
+    )
+  else:
+    raise ValueError('Unknown agent: {}'.format(agent_name))
+
+
+@gin.configurable
+def create_generator(sess, generator_name, output_shape,
+                     input_shapes=None, summary_writer=None):
+  """Creates a generator.
+
+  Args:
+    sess: A `tf.Session` object for running associated ops.
+    generator_name: str, name of the generator to create.
+    output_shape: tuple of ints describing the output shape.
+    input_shapes: tuple of tuples of ints describing input shapes (there may
+      be more than one input).
+    summary_writer: A Tensorflow summary writer to pass to the agent
+      for in-agent training statistics in Tensorboard.
+
+  Returns:
+    generator: A generator.
+
+  Raises:
+    ValueError: If `generator_name` is not in supported list.
+  """
+  assert generator_name is not None
+  if generator_name == 'dummy':
+    return dummy_generator.DummyGenerator(output_shape)
+  elif generator_name == 'regressor':
+    return regressor.Regressor(sess, input_shapes, output_shape,
+                               summary_writer=summary_writer)
+  elif generator_name == 'vgan':
+    return gan.VanillaGAN(sess, output_shape,
+                          conditional_input_shapes=input_shapes,
+                          summary_writer=summary_writer)
+  elif generator_name == 'wgan':
+    return wgan.WassersteinGAN(sess, output_shape,
+                               conditional_input_shapes=input_shapes,
+                               summary_writer=summary_writer)
+  elif generator_name == 'wgan_gp':
+    return wgan_gp.WassersteinGANGP(sess, output_shape,
+                                    conditional_input_shapes=input_shapes,
+                                    summary_writer=summary_writer)
+  else:
+    raise ValueError('Unknown generator: {}'.format(generator_name))
+
+
+@gin.configurable
 class GAIRLAgent(AbstractAgent):
   """An implementation of the GAIRL agent."""
 
   def __init__(self,
-               rl_agent,
-               state_gen,
-               rewterm_gen,
+               sess,
                num_actions,
+               rl_agent_name='dqn',
+               state_gen_name='wgan_gp',
+               rewterm_gen_name='regressor',
                observation_shape=atari_lib.NATURE_DQN_OBSERVATION_SHAPE,
                observation_dtype=atari_lib.NATURE_DQN_DTYPE,
                stack_size=atari_lib.NATURE_DQN_STACK_SIZE,
@@ -63,18 +160,21 @@ class GAIRLAgent(AbstractAgent):
                train_memory_capacity=40000,
                test_memory_capacity=10000,
                memory_batch_size=256,
+               summary_writer=None,
                eval_mode=False):
     """Initializes the agent by combining generative models with the
     reinforcement learning agent.
 
     Args:
-      rl_agent: agent, the main decision making agent behind the GAIRL
-      framework.
-      state_gen: generative model, generative model that will be used
-      to learn and simulate (state1, action) -> state2 transition.
-      rewterm_gen: generative model, generative model that will be used
-      to learn and simulate (state1, action) -> (reward, is_terminal)
-      transition.
+      sess: `tf.Session`, for executing ops.
+      num_actions: int, number of actions the agent can take at any state.
+      rl_agent_name: agent, the main decision making agent behind the GAIRL
+        framework.
+      state_gen_name: generative model, generative model that will be used
+        to learn and simulate (state1, action) -> state2 transition.
+      rewterm_gen_name: generative model, generative model that will be used
+        to learn and simulate (state1, action) -> (reward, is_terminal)
+        transition.
       observation_shape: tuple of ints describing the observation shape.
       stack_size: int, number of frames to use in state stack.
       model_free_length: int, how many model-free steps are performed in
@@ -89,26 +189,26 @@ class GAIRLAgent(AbstractAgent):
         the generative models.
       memory_batch_size: int, batch size used when replaying transitions from
         the memories.
+      summary_writer: SummaryWriter object for outputting training statistics.
+        Summary writing disabled if set to None.
       eval_mode: bool, True for evaluation and False for training.
     """
-    assert rl_agent.num_actions == num_actions
-    assert rl_agent.observation_shape == observation_shape
-    assert rl_agent.stack_size == stack_size
-
     tf.logging.info('Creating %s agent with the following parameters:',
                     self.__class__.__name__)
-    tf.logging.info('\t Model free agent: %s', rl_agent.__class__.__name__)
-    tf.logging.info('\t State generator: %s', state_gen.__class__.__name__)
-    tf.logging.info('\t Rewterm generator: %s',
-                    rewterm_gen.__class__.__name__)
+    tf.logging.info('\t Model free agent: %s', rl_agent_name)
+    tf.logging.info('\t State generator: %s', state_gen_name)
+    tf.logging.info('\t Rewterm generator: %s', rewterm_gen_name)
+    tf.logging.info('\t Model free length: %d', model_free_length)
+    tf.logging.info('\t Model learning length: %d', model_learning_length)
+    tf.logging.info('\t Model based length: %d', model_based_length)
+    tf.logging.info('\t Train memory capacity: %d', train_memory_capacity)
+    tf.logging.info('\t Test memory capacity: %d', test_memory_capacity)
+    tf.logging.info('\t Memory batch size: %d', memory_batch_size)
 
     AbstractAgent.__init__(self,
                            num_actions,
                            observation_shape=observation_shape,
                            stack_size=stack_size)
-    self.rl_agent = rl_agent
-    self.state_gen = state_gen
-    self.rewterm_gen = rewterm_gen
     self.observation_dtype = observation_dtype
     self.model_free_steps = 0
     self.model_free_length = model_free_length
@@ -120,6 +220,22 @@ class GAIRLAgent(AbstractAgent):
     state_shape = (1,) + self.observation_shape + (stack_size,)
     self.train_state = np.zeros(state_shape)
     self.eval_mode = eval_mode
+
+    # Initialising submodels
+    with tf.variable_scope('agent'):
+      self.rl_agent = create_agent(sess, rl_agent_name, num_actions,
+                                   observation_shape=observation_shape,
+                                   observation_dtype=observation_dtype,
+                                   stack_size=stack_size,
+                                   summary_writer=summary_writer)
+    with tf.variable_scope('state_generator'):
+      self.state_gen = create_generator(sess, state_gen_name, state_shape,
+                                        input_shapes=(state_shape, ()),
+                                        summary_writer=summary_writer)
+    with tf.variable_scope('rewterm_generator'):
+      self.rewterm_gen = create_generator(sess, rewterm_gen_name, (2,),
+                                          input_shapes=(state_shape, ()),
+                                          summary_writer=summary_writer)
 
     # Each episode goes either to train or to test memory
     total_memory = (train_memory_capacity + test_memory_capacity)

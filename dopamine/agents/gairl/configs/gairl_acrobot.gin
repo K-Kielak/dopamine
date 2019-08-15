@@ -1,12 +1,16 @@
-# Hyperparameters for a simple DQN-style Acrobot agent. The hyperparameters
+# Hyperparameters for a simple GAIRL-style Acrobot agent. The hyperparameters
 # chosen achieve reasonable performance.
 import dopamine.discrete_domains.gym_lib
 import dopamine.discrete_domains.run_experiment
-import dopamine.agents.dqn.dqn_agent
+import dopamine.agents.gairl.gairl_agent
 import dopamine.replay_memory.circular_replay_buffer
 import gin.tf.external_configurables
 
+GAIRLAgent.rl_agent_name = 'dqn'
+GAIRLAgent.state_gen_name = 'dummy'
+GAIRLAgent.rewterm_gen_name = 'dummy'
 GAIRLAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
+GAIRLAgent.observation_dtype = %gym_lib.ACROBOT_OBSERVATION_DTYPE
 GAIRLAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
 GAIRLAgent.model_free_length = 15000
 GAIRLAgent.model_learning_length = 2000
@@ -16,9 +20,6 @@ GAIRLAgent.train_memory_capacity = 40000
 GAIRLAgent.test_memory_capacity = 10000
 GAIRLAgent.memory_batch_size = 256
 
-DQNAgent.observation_shape = %gym_lib.ACROBOT_OBSERVATION_SHAPE
-DQNAgent.observation_dtype = %gym_lib.ACROBOT_OBSERVATION_DTYPE
-DQNAgent.stack_size = %gym_lib.ACROBOT_STACK_SIZE
 DQNAgent.network = @gym_lib.acrobot_dqn_network
 DQNAgent.gamma = 0.99
 DQNAgent.update_horizon = 1
@@ -37,10 +38,7 @@ tf.train.GradientDescentOptimizer.learning_rate = 5e-3
 
 create_gym_environment.environment_name = 'Acrobot'
 create_gym_environment.version = 'v1'
-create_agent.agent_name = 'gairl'
-create_agent.gairl_rl_agent_name = 'dqn'
-create_agent.gairl_state_gen_name = 'dummy'
-create_agent.gairl_rewterm_gen_name = 'dummy'
+run_experiment.create_agent.agent_name = 'gairl'
 Runner.create_environment_fn = @gym_lib.create_gym_environment
 Runner.num_iterations = 100
 Runner.training_steps = 10000
