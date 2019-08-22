@@ -79,6 +79,7 @@ def load_data(task_name=None):
 
 @gin.configurable
 def mnist_regressor_mlp(inputs, output_shape, network_size=None,
+                        batch_norm=False,
                         hidden_activation_fn=tf.nn.relu):
   """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
 
@@ -86,6 +87,7 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None,
     inputs: `tf.Tensor`, the network input.
     output_shape: tuple of ints representing dimensions of the output
     network_size: tuple of ints representing dimensions of the network.
+    batch_norm: boolean, specifies if batch normalization should be used.
     hidden_activation_fn: function that takes a tensor and applies non-linear
       operation. None if no function should be applied (linear activation).
 
@@ -95,6 +97,9 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None,
   if network_size is None:
     network_size = (256, 512, 1024)
 
+  assert len(network_size) > 0
+
+  normalizer_fn = tf.layers.batch_normalization if batch_norm else None
   net = tf.contrib.slim.flatten(inputs[0])
   net = tf.contrib.slim.fully_connected(net, network_size[0], activation_fn=None)
   for inp in inputs[1:]:
@@ -103,10 +108,13 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None,
                                                activation_fn=None)
     net = net + cond_net
 
+  if batch_norm:
+    net = normalizer_fn(net)
   net = hidden_activation_fn(net)
   for layer in network_size[1:]:
     net = tf.contrib.slim.fully_connected(net, layer,
-                                          activation_fn=hidden_activation_fn)
+                                          activation_fn=hidden_activation_fn,
+                                          normalizer_fn=normalizer_fn)
 
   output_size = np.prod(output_shape).item()
   net = tf.contrib.slim.fully_connected(net, output_size,
