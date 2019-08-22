@@ -297,7 +297,8 @@ class RainbowAgent(dqn_agent.DQNAgent):
     with tf.control_dependencies([update_priorities_op]):
       if self.summary_writer is not None:
         with tf.variable_scope('Losses'):
-          tf.summary.scalar('CrossEntropyLoss', tf.reduce_mean(loss))
+          self._summaries.append(tf.summary.scalar('CrossEntropyLoss',
+                                                   tf.reduce_mean(loss)))
       # Schaul et al. reports a slightly different rule, where 1/N is also
       # exponentiated by beta. Not doing so seems more reasonable, and did not
       # impact performance in our experiments.

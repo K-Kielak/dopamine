@@ -81,6 +81,7 @@ class Regressor(AbstractGenerator):
     self.summary_writer = summary_writer
     self.summary_writing_frequency = summary_writing_frequency
     self.allow_partial_reload = allow_partial_reload
+    self._summaries = []
 
     with tf.device(tf_device):
       # Build network
@@ -100,12 +101,12 @@ class Regressor(AbstractGenerator):
       self._loss = tf.reduce_mean(self._loss)
       if self.summary_writer is not None:
         with tf.variable_scope('Losses'):
-          tf.summary.scalar('L1Loss', self._loss)
+          self._summaries.append(tf.summary.scalar('L1Loss', self._loss))
       self._train_op = self.optimizer.minimize(self._loss)
 
     if self.summary_writer is not None:
       # All tf.summaries should have been defined prior to running this.
-      self._merged_summaries = tf.summary.merge_all()
+      self._merged_summaries = tf.summary.merge(self._summaries)
     self._sess = sess
     self._saver = tf.train.Saver(max_to_keep=max_tf_checkpoints_to_keep)
 

@@ -106,6 +106,7 @@ class VanillaGAN(AbstractGenerator):
     self.summary_writer = summary_writer
     self.summary_writing_frequency = summary_writing_frequency
     self.allow_partial_reload = allow_partial_reload
+    self._summaries = []
 
     with tf.device(tf_device):
       self._build_networks()
@@ -117,7 +118,7 @@ class VanillaGAN(AbstractGenerator):
 
     if self.summary_writer is not None:
       # All tf.summaries should have been defined prior to running this.
-      self._merged_summaries = tf.summary.merge_all()
+      self._merged_summaries = tf.summary.merge(self._summaries)
     self._sess = sess
     self._saver = tf.train.Saver(max_to_keep=max_tf_checkpoints_to_keep)
 
@@ -216,21 +217,27 @@ class VanillaGAN(AbstractGenerator):
     self._l1_loss = tf.reduce_mean(self._l1_loss)
     if self.summary_writer is not None:
       with tf.variable_scope('Losses'):
-        tf.summary.scalar('GeneratorLoss', self._generator_loss)
-        tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss)
-        tf.summary.scalar('L1Loss', self._l1_loss)
+        self._summaries += [
+          tf.summary.scalar('GeneratorLoss', self._generator_loss),
+          tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss),
+          tf.summary.scalar('L1Loss', self._l1_loss)
+        ]
       with tf.variable_scope('Discriminations'):
         real_discrimination = tf.nn.sigmoid(self._real_discriminator_out)
         real_discrimination = tf.reduce_mean(real_discrimination)
-        tf.summary.scalar('RealDiscrimination', real_discrimination)
+        self._summaries.append(tf.summary.scalar('RealDiscrimination',
+                                                 real_discrimination))
         gen_discrimination = tf.nn.sigmoid(self._gen_discriminator_out)
         gen_discrimination = tf.reduce_mean(gen_discrimination)
-        tf.summary.scalar('GeneratedDiscrimination', gen_discrimination)
+        self._summaries.append(tf.summary.scalar('GeneratedDiscrimination',
+                                                 gen_discrimination))
       with tf.variable_scope('Gradients'):
-        [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-         for grad, var in self._g_grads]
-        [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-         for grad, var in self._d_grads]
+        self._summaries += [tf.summary.scalar(f'{var.name}_std',
+                                              tf.math.reduce_std(grad))
+                            for grad, var in self._g_grads]
+        self._summaries += [tf.summary.scalar(f'{var.name}_std',
+                                              tf.math.reduce_std(grad))
+                            for grad, var in self._d_grads]
 
   def generate(self, inputs):
     """Generates data based on the received input.

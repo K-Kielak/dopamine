@@ -152,11 +152,15 @@ class WassersteinGAN(gan.VanillaGAN):
     self._l1_loss = tf.reduce_mean(self._l1_loss)
     if self.summary_writer is not None:
       with tf.variable_scope('Losses'):
-        tf.summary.scalar('GeneratorLoss', self._generator_loss)
-        tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss)
-        tf.summary.scalar('L1Loss', self._l1_loss)
+        self._summaries += [
+          tf.summary.scalar('GeneratorLoss', self._generator_loss),
+          tf.summary.scalar('DiscriminatorLoss', self._discriminator_loss),
+          tf.summary.scalar('L1Loss', self._l1_loss)
+        ]
       with tf.variable_scope('Gradients'):
-        [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-         for grad, var in self._g_grads]
-        [tf.summary.scalar(f'{var.name}_std', tf.math.reduce_std(grad))
-         for grad, var in self._d_grads]
+        self._summaries += [tf.summary.scalar(f'{var.name}_std',
+                                              tf.math.reduce_std(grad))
+                            for grad, var in self._g_grads]
+        self._summaries += [tf.summary.scalar(f'{var.name}_std',
+                                              tf.math.reduce_std(grad))
+                            for grad, var in self._d_grads]

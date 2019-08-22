@@ -186,6 +186,7 @@ class DQNAgent(AbstractAgent):
     self.summary_writer = summary_writer
     self.summary_writing_frequency = summary_writing_frequency
     self.allow_partial_reload = allow_partial_reload
+    self._summaries = []
 
     with tf.device(tf_device):
       # Create a placeholder for the state input to the DQN network.
@@ -203,7 +204,7 @@ class DQNAgent(AbstractAgent):
 
     if self.summary_writer is not None:
       # All tf.summaries should have been defined prior to running this.
-      self._merged_summaries = tf.summary.merge_all()
+      self._merged_summaries = tf.summary.merge(self._summaries)
     self._sess = sess
     self._saver = tf.train.Saver(max_to_keep=max_tf_checkpoints_to_keep)
 
@@ -313,7 +314,8 @@ class DQNAgent(AbstractAgent):
         target, replay_chosen_q, reduction=tf.losses.Reduction.NONE)
     if self.summary_writer is not None:
       with tf.variable_scope('Losses'):
-        tf.summary.scalar('HuberLoss', tf.reduce_mean(loss))
+        self._summaries.append(tf.summary.scalar('HuberLoss',
+                                                 tf.reduce_mean(loss)))
     return self.optimizer.minimize(tf.reduce_mean(loss))
 
   def _build_sync_op(self):
