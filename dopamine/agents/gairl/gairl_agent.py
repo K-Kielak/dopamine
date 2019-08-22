@@ -217,24 +217,26 @@ class GAIRLAgent(AbstractAgent):
     self.model_learning_logging_frequency = model_learning_logging_frequency
     self.model_based_steps = 0
     self.model_based_length = model_based_length
-    state_shape = (1,) + self.observation_shape + (stack_size,)
-    self.train_state = np.zeros(state_shape)
     self.eval_mode = eval_mode
+    self.action_onehot_template = np.eye(num_actions,
+                                         dtype=observation_dtype.as_numpy_dtype)
 
     # Initialising submodels
+    state_shape = self.observation_shape + (stack_size,)
+    input_shapes = (state_shape, (num_actions,))
     with tf.variable_scope('agent'):
       self.rl_agent = create_agent(sess, rl_agent_name, num_actions,
                                    observation_shape=observation_shape,
                                    observation_dtype=observation_dtype,
                                    stack_size=stack_size,
                                    summary_writer=summary_writer)
-    with tf.variable_scope('state_generator'):
+    with tf.variable_scope('state_gen'):
       self.state_gen = create_generator(sess, state_gen_name, state_shape,
-                                        input_shapes=(state_shape, ()),
+                                        input_shapes=input_shapes,
                                         summary_writer=summary_writer)
-    with tf.variable_scope('rewterm_generator'):
+    with tf.variable_scope('rewterm_gen'):
       self.rewterm_gen = create_generator(sess, rewterm_gen_name, (2,),
-                                          input_shapes=(state_shape, ()),
+                                          input_shapes=input_shapes,
                                           summary_writer=summary_writer)
 
     # Each episode goes either to train or to test memory
@@ -281,8 +283,7 @@ class GAIRLAgent(AbstractAgent):
     self._is_test_episode = random.random() < self._test_episode_prob
 
     if not self.eval_mode:
-      self._reset_train_state()
-      self._record_train_observation(observation)
+      self._train_observation = np.reshape(observation, self.observation_shape)
       self._train_step()
 
     self.rl_agent.eval_mode = self.eval_mode
@@ -304,7 +305,7 @@ class GAIRLAgent(AbstractAgent):
     """
     if not self.eval_mode:
       self._last_train_observation = self._train_observation
-      self._record_train_observation(observation)
+      self._train_observation = np.reshape(observation, self.observation_shape)
       self._store_transition(self._last_train_observation, self.action,
                              reward, False)
       self._train_step()
@@ -327,26 +328,6 @@ class GAIRLAgent(AbstractAgent):
 
     self.rl_agent.eval_mode = self.eval_mode
     self.rl_agent.end_episode(reward)
-
-  def _reset_train_state(self):
-    """Resets the agent state by filling it with zeros."""
-    self.train_state.fill(0)
-
-  def _record_train_observation(self, observation):
-    """Records an observation and update state.
-
-    Extracts a frame from the observation vector and overwrites the oldest
-    frame in the state buffer.
-
-    Args:
-      observation: numpy array, an observation from the environment.
-    """
-    # Set current observation. We do the reshaping to handle environments
-    # without frame stacking.
-    self._train_observation = np.reshape(observation, self.observation_shape)
-    # Swap out the oldest frame with the current frame.
-    self.train_state = np.roll(self.train_state, -1, axis=-1)
-    self.train_state[0, ..., -1] = self._train_observation
 
   def _store_transition(self, last_observation, action, reward, is_terminal):
     """Stores an experienced transition consisting of the tuple
@@ -386,10 +367,12 @@ class GAIRLAgent(AbstractAgent):
     while True:
       # Prepare data
       batch_data = self._train_memory.sample_transition_batch()
-      batch_inputs = batch_data[:2]  # states and actions
+      # Inputs consist of states and actions
+      batch_states = batch_data[0]
+      batch_actions_onehot = self.action_onehot_template[batch_data[1]]
+      batch_inputs = (batch_states, batch_actions_onehot)
       batch_next_state = batch_data[3]
-      batch_rewterm = np.vstack((batch_data[2], batch_data[6]))
-
+      batch_rewterm = np.column_stack((batch_data[2], batch_data[6]))
       # Train models
       state_statistics = self.state_gen.train(batch_inputs, batch_next_state)
       rewterm_statistics = self.rewterm_gen.train(batch_inputs, batch_rewterm)

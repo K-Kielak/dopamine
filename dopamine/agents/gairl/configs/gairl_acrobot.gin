@@ -32,6 +32,7 @@ DQNAgent.epsilon_eval = 0.05
 DQNAgent.epsilon_decay_period = 10000
 DQNAgent.tf_device = '/cpu:*'  # use '/cpu:*' for non-GPU version
 DQNAgent.optimizer = @tf.train.GradientDescentOptimizer()
+DQNAgent.summary_writing_frequency = 100
 acrobot_dqn_network.network_size = [24, 24]
 
 tf.train.GradientDescentOptimizer.learning_rate = 5e-3
@@ -39,6 +40,7 @@ tf.train.GradientDescentOptimizer.learning_rate = 5e-3
 create_gym_environment.environment_name = 'Acrobot'
 create_gym_environment.version = 'v1'
 run_experiment.create_agent.agent_name = 'gairl'
+run_experiment.create_agent.debug_mode = True
 Runner.create_environment_fn = @gym_lib.create_gym_environment
 Runner.num_iterations = 100
 Runner.training_steps = 10000
