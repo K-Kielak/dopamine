@@ -120,7 +120,10 @@ class VanillaGAN(AbstractGenerator):
       # All tf.summaries should have been defined prior to running this.
       self._merged_summaries = tf.summary.merge(self._summaries)
     self._sess = sess
-    self._saver = tf.train.Saver(max_to_keep=max_tf_checkpoints_to_keep)
+    model_scope = tf.get_default_graph().get_name_scope()
+    model_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, model_scope)
+    self._saver = tf.train.Saver(var_list=model_vars,
+                                 max_to_keep=max_tf_checkpoints_to_keep)
 
   def _build_networks(self):
     # Define inputs
