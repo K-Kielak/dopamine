@@ -52,6 +52,20 @@ def dict_to_str(d):
   return ', '.join([f'{k}: {v}' for k, v in d.items()])
 
 
+def _calculate_classification_statistics(output, target):
+  output = np.round(np.clip(output, 0, 1))
+  target = np.round(np.clip(target, 0, 1))
+
+  true_positives = np.sum(output * target)
+  if true_positives == 0:
+    return 0., 0., 0.
+
+  precision = true_positives / np.sum(output)
+  recall = true_positives / np.sum(target)
+  f1 = (2 * precision * recall) / (precision + recall)
+  return f1, precision, recall
+
+
 @gin.configurable
 def create_agent(sess, agent_name, num_actions,
                  observation_shape=atari_lib.NATURE_DQN_OBSERVATION_SHAPE,
@@ -218,6 +232,7 @@ class GAIRLAgent(AbstractAgent):
     self.model_based_steps = 0
     self.model_based_length = model_based_length
     self.eval_mode = eval_mode
+    self.summary_writer = summary_writer
     self.action_onehot_template = np.eye(num_actions,
                                          dtype=observation_dtype.as_numpy_dtype)
 
@@ -367,12 +382,8 @@ class GAIRLAgent(AbstractAgent):
     while True:
       # Prepare data
       batch_data = self._train_memory.sample_transition_batch()
-      # Inputs consist of states and actions
-      batch_states = batch_data[0]
-      batch_actions_onehot = self.action_onehot_template[batch_data[1]]
-      batch_inputs = (batch_states, batch_actions_onehot)
-      batch_next_state = batch_data[3]
-      batch_rewterm = np.column_stack((batch_data[2], batch_data[6]))
+      batch_inputs, batch_next_state, batch_rewterm = \
+        self._prepare_transitions_batch(batch_data)
       # Train models
       state_statistics = self.state_gen.train(batch_inputs, batch_next_state)
       rewterm_statistics = self.rewterm_gen.train(batch_inputs, batch_rewterm)
@@ -395,12 +406,74 @@ class GAIRLAgent(AbstractAgent):
                         self.model_learning_logging_frequency / time_delta)
         start_time = time.time()
         mean_statistics = collections.defaultdict(int)
+        self._save_model_learning_summaries()
 
       # Stop training after specified
       if self.model_learning_steps % self.model_learning_length == 0:
         break
 
     tf.logging.info('***Finished model learning phase.***')
+
+  def _save_model_learning_summaries(self):
+    train_data = self._train_memory.sample_transition_batch()
+    train_summs = self._prepare_model_learning_summaries(train_data, 'Train')
+    test_data = self._test_memory.sample_transition_batch()
+    test_summs = self._prepare_model_learning_summaries(test_data, 'Test')
+    summaries = train_summs + test_summs
+    self.summary_writer.add_summary(tf.Summary(value=summaries),
+                                    self.model_learning_steps)
+
+  def _prepare_model_learning_summaries(self, batch_data, test_or_train):
+    batch_inputs, batch_next_state, batch_rewterm = \
+      self._prepare_transitions_batch(batch_data)
+    batch_reward = batch_rewterm[:, 0]
+    batch_terminal = batch_rewterm[:, 1]
+
+    gen_next_state = self.state_gen.generate(batch_inputs)
+    state_l1 = np.mean(np.abs(gen_next_state - batch_next_state))
+
+    gen_rewterm = self.rewterm_gen.generate(batch_inputs)
+    gen_reward = gen_rewterm[:, 0]
+    gen_terminal = gen_rewterm[:, 1]
+    rewterm_l1 = np.mean(np.abs(gen_rewterm - batch_rewterm))
+    reward_l2 = np.mean(np.square(gen_reward - batch_reward))
+    term_precision, term_recall, term_f1 = \
+      _calculate_classification_statistics(gen_terminal, batch_terminal)
+    return [
+      tf.Summary.Value(tag=f'State/{test_or_train}L1Loss',
+                       simple_value=state_l1),
+      tf.Summary.Value(tag=f'Rewterm/{test_or_train}L1Loss',
+                       simple_value=rewterm_l1),
+      tf.Summary.Value(tag=f'Rewterm/{test_or_train}RewardL2Loss',
+                       simple_value=reward_l2),
+      tf.Summary.Value(tag=f'Rewterm/{test_or_train}TerminalPrecision',
+                       simple_value=term_precision),
+      tf.Summary.Value(tag=f'Rewterm/{test_or_train}TerminalRecall',
+                       simple_value=term_recall),
+      tf.Summary.Value(tag=f'Rewterm/{test_or_train}TerminalF1',
+                       simple_value=term_f1)
+    ]
+
+  def _prepare_transitions_batch(self, batch_data):
+    """Transforms batch data from memory into separate batches usable by
+    generative models.
+
+    Args:
+      batch_data: tuple of numpy arrays, tuple returned by the memory
+        consisting of all important information about sampled transitions.
+
+    Returns:
+      tuple of numpy arrays, (batch_inputs, batch_next_state, batch_rewterm),
+        all necessary and prepared pieces of transition data.
+    """
+    batch_states = batch_data[0]
+    batch_actions_onehot = self.action_onehot_template[batch_data[1]]
+    batch_inputs = (batch_states, batch_actions_onehot)
+    batch_next_state = batch_data[3]
+    batch_reward = batch_data[2]
+    batch_terminal = batch_data[6]
+    batch_rewterm = np.column_stack((batch_reward, batch_terminal))
+    return batch_inputs, batch_next_state, batch_rewterm
 
   def _train_model_based(self):
     pass
