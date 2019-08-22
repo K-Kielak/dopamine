@@ -78,13 +78,16 @@ def load_data(task_name=None):
 
 
 @gin.configurable
-def mnist_regressor_mlp(inputs, output_shape, network_size=None):
+def mnist_regressor_mlp(inputs, output_shape, network_size=None,
+                        hidden_activation_fn=tf.nn.relu):
   """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
 
   Args:
     inputs: `tf.Tensor`, the network input.
     output_shape: tuple of ints representing dimensions of the output
     network_size: tuple of ints representing dimensions of the network.
+    hidden_activation_fn: function that takes a tensor and applies non-linear
+      operation. None if no function should be applied (linear activation).
 
   Returns:
     The tensor containing generated data.
@@ -100,9 +103,10 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None):
                                                activation_fn=None)
     net = net + cond_net
 
-  net = tf.nn.relu(net)
+  net = hidden_activation_fn(net)
   for layer in network_size[1:]:
-    net = tf.contrib.slim.fully_connected(net, layer)
+    net = tf.contrib.slim.fully_connected(net, layer,
+                                          activation_fn=hidden_activation_fn)
 
   output_size = np.prod(output_shape).item()
   net = tf.contrib.slim.fully_connected(net, output_size,
@@ -112,7 +116,8 @@ def mnist_regressor_mlp(inputs, output_shape, network_size=None):
 
 @gin.configurable
 def mnist_generator_gan(noise, conditional_inputs, output_shape,
-                        network_size=None, batch_norm=False):
+                        network_size=None, batch_norm=False,
+                        hidden_activation_fn=tf.nn.leaky_relu):
   """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
 
   Args:
@@ -121,6 +126,8 @@ def mnist_generator_gan(noise, conditional_inputs, output_shape,
     output_shape: tuple of ints representing dimensions of the output
     network_size: tuple of ints representing dimensions of the network.
     batch_norm: boolean, specifies if batch normalization should be used.
+    hidden_activation_fn: function that takes a tensor and applies non-linear
+      operation. None if no function should be applied (linear activation).
 
   Returns:
     The tensor containing generated data.
@@ -147,10 +154,10 @@ def mnist_generator_gan(noise, conditional_inputs, output_shape,
 
   if batch_norm:
     net = normalizer_fn(net)
-  net = tf.nn.leaky_relu(net)
+  net = hidden_activation_fn(net)
   for layer in network_size[1:]:
     net = tf.contrib.slim.fully_connected(net, layer,
-                                          activation_fn=tf.nn.leaky_relu,
+                                          activation_fn=hidden_activation_fn,
                                           normalizer_fn=normalizer_fn,
                                           weights_initializer=initializer,
                                           biases_initializer=initializer)
@@ -164,7 +171,8 @@ def mnist_generator_gan(noise, conditional_inputs, output_shape,
 
 @gin.configurable
 def mnist_discriminator_gan(conditional_inputs, output, network_size=None,
-                            dropout_keep_prob=0.8, batch_norm=False):
+                            dropout_keep_prob=0.8, batch_norm=False,
+                            hidden_activation_fn=tf.nn.leaky_relu):
   """Builds a basic network for generation tasks, rescaling inputs to [-1, 1].
 
   Args:
@@ -174,6 +182,8 @@ def mnist_discriminator_gan(conditional_inputs, output, network_size=None,
     dropout_keep_prob: float, probability of keeping the element in dropout
       layers.
     batch_norm: boolean, specifies if batch normalization should be used.
+    hidden_activation_fn: function that takes a tensor and applies non-linear
+      operation. None if no function should be applied (linear activation).
 
   Returns:
     The tensor containing logit of the discrimination (before sigmoid).
@@ -199,11 +209,11 @@ def mnist_discriminator_gan(conditional_inputs, output, network_size=None,
                                                biases_initializer=initializer)
     net = net + cond_net
 
-  net = tf.nn.leaky_relu(net)
+  net = hidden_activation_fn(net)
   for layer in network_size[1:]:
     net = tf.contrib.slim.dropout(net, keep_prob=dropout_keep_prob)
     net = tf.contrib.slim.fully_connected(net, layer,
-                                          activation_fn=tf.nn.leaky_relu,
+                                          activation_fn=hidden_activation_fn,
                                           normalizer_fn=normalizer_fn,
                                           weights_initializer=initializer,
                                           biases_initializer=initializer)
