@@ -224,17 +224,17 @@ class GAIRLAgent(AbstractAgent):
     # Initialising submodels
     state_shape = self.observation_shape + (stack_size,)
     input_shapes = (state_shape, (num_actions,))
-    with tf.variable_scope('agent'):
+    with tf.variable_scope('agent'), gin.config_scope('agent'):
       self.rl_agent = create_agent(sess, rl_agent_name, num_actions,
                                    observation_shape=observation_shape,
                                    observation_dtype=observation_dtype,
                                    stack_size=stack_size,
                                    summary_writer=summary_writer)
-    with tf.variable_scope('state_gen'):
+    with tf.variable_scope('state_gen'), gin.config_scope('state_gen'):
       self.state_gen = create_generator(sess, state_gen_name, state_shape,
                                         input_shapes=input_shapes,
                                         summary_writer=summary_writer)
-    with tf.variable_scope('rewterm_gen'):
+    with tf.variable_scope('rewterm_gen'), gin.config_scope('rewterm_gen'):
       self.rewterm_gen = create_generator(sess, rewterm_gen_name, (2,),
                                           input_shapes=input_shapes,
                                           summary_writer=summary_writer)
