@@ -230,6 +230,10 @@ class GAIRLAgent(AbstractAgent):
     tf.logging.info('\t Rewterm generator: %s', rewterm_gen_name)
     tf.logging.info('\t Model free length: %d', model_free_length)
     tf.logging.info('\t Model learning length: %d', model_learning_length)
+    tf.logging.info('\t Model based max steps per episode: %d',
+                    model_based_max_steps_per_episode)
+    tf.logging.info('\t Terminals upsampling coefficient: %d',
+                    terminals_upsampling_coeff)
     tf.logging.info('\t Model based length: %d', model_based_length)
     tf.logging.info('\t Train memory capacity: %d', train_memory_capacity)
     tf.logging.info('\t Test memory capacity: %d', test_memory_capacity)
