@@ -171,6 +171,7 @@ class GAIRLAgent(AbstractAgent):
                model_learning_length=50000,
                model_learning_logging_frequency=100,
                model_based_length=50000,
+               terminals_upsampling_coeff=None,
                train_memory_capacity=40000,
                test_memory_capacity=10000,
                memory_batch_size=256,
@@ -197,6 +198,10 @@ class GAIRLAgent(AbstractAgent):
         performed in a single GAIRL iteration.
       model_based_length: int, how many reinforcement learning steps will be
         performed in a simulated environment in a single GAIRL iteration.
+      terminals_upsampling_coeff: float, specifies what's the expected
+        terminals/non_terminals ratio in the memory. If terminals don't
+        naturally reach that ratio, they will be upsampled accordingly.
+        None if upsampling shouldn't occur.
       train_memory_capacity: int, capacity of the memory used for training
         the generative models.
       test_memory_capacity: int, capacity of the memory used for testing
@@ -231,6 +236,9 @@ class GAIRLAgent(AbstractAgent):
     self.model_learning_logging_frequency = model_learning_logging_frequency
     self.model_based_steps = 0
     self.model_based_length = model_based_length
+    self.terminals_so_far = 0
+    self.non_terminals_so_far = 0
+    self.terminals_upsampling_coeff = terminals_upsampling_coeff
     self.eval_mode = eval_mode
     self.summary_writer = summary_writer
     self.action_onehot_template = np.eye(num_actions,
@@ -358,10 +366,21 @@ class GAIRLAgent(AbstractAgent):
       reward: float, the reward.
       is_terminal: bool, indicating if the current state is a terminal state.
     """
-    if self._is_test_episode:
-      self._test_memory.add(last_observation, action, reward, is_terminal)
+    mem = self._test_memory if self._is_test_episode else self._train_memory
+    if is_terminal:
+      self.terminals_so_far += 1
     else:
-      self._train_memory.add(last_observation, action, reward, is_terminal)
+      self.non_terminals_so_far += 1
+
+    upsampling_ratio = 1
+    if is_terminal and self.terminals_upsampling_coeff is not None:
+      nonterm_term_ratio = self.non_terminals_so_far / self.terminals_so_far
+      upsampling_ratio = nonterm_term_ratio * self.terminals_upsampling_coeff
+      # At least one (no upsampling) if naturally ratio exceeds expected ratio
+      upsampling_ratio = np.maximum(1, round(upsampling_ratio))
+
+    for i in range(upsampling_ratio):
+      mem.add(last_observation, action, reward, is_terminal)
 
   def _train_step(self):
     """Increment model free steps count.
@@ -437,7 +456,7 @@ class GAIRLAgent(AbstractAgent):
     gen_terminal = gen_rewterm[:, 1]
     rewterm_l1 = np.mean(np.abs(gen_rewterm - batch_rewterm))
     reward_l2 = np.mean(np.square(gen_reward - batch_reward))
-    term_precision, term_recall, term_f1 = \
+    term_f1, term_precision, term_recall = \
       _calculate_classification_statistics(gen_terminal, batch_terminal)
     return [
       tf.Summary.Value(tag=f'State/{test_or_train}L1Loss',
