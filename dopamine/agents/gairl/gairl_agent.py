@@ -39,10 +39,10 @@ import gin.tf
 
 
 AGENT_APPENDIX = '@a'
-STATE_APPENDIX = '@s'
+OBSERV_APPENDIX = '@o'
 REWTERM_APPENDIX = '@r'
 AGENT_SUBDIR = 'agent'
-STATE_SUBDIR = 'state'
+OBSERV_SUBDIR = 'observ'
 REWTERM_SUBDIR = 'rewterm'
 TRAIN_MEM_SUBDIR = 'train_mem'
 TEST_MEM_SUBDIR = 'test_mem'
@@ -162,7 +162,7 @@ class GAIRLAgent(AbstractAgent):
                sess,
                num_actions,
                rl_agent_name='dqn',
-               state_gen_name='wgan_gp',
+               observ_gen_name='wgan_gp',
                rewterm_gen_name='regressor',
                observation_shape=atari_lib.NATURE_DQN_OBSERVATION_SHAPE,
                observation_dtype=atari_lib.NATURE_DQN_DTYPE,
@@ -185,10 +185,10 @@ class GAIRLAgent(AbstractAgent):
       num_actions: int, number of actions the agent can take at any state.
       rl_agent_name: agent, the main decision making agent behind the GAIRL
         framework.
-      state_gen_name: generative model, generative model that will be used
-        to learn and simulate (state1, action) -> state2 transition.
+      observ_gen_name: generative model, generative model that will be used
+        to learn and simulate (state, action) -> observation transition.
       rewterm_gen_name: generative model, generative model that will be used
-        to learn and simulate (state1, action) -> (reward, is_terminal)
+        to learn and simulate (state, action) -> (reward, is_terminal)
         transition.
       observation_shape: tuple of ints describing the observation shape.
       stack_size: int, number of frames to use in state stack.
@@ -215,7 +215,7 @@ class GAIRLAgent(AbstractAgent):
     tf.logging.info('Creating %s agent with the following parameters:',
                     self.__class__.__name__)
     tf.logging.info('\t Model free agent: %s', rl_agent_name)
-    tf.logging.info('\t State generator: %s', state_gen_name)
+    tf.logging.info('\t Observation generator: %s', observ_gen_name)
     tf.logging.info('\t Rewterm generator: %s', rewterm_gen_name)
     tf.logging.info('\t Model free length: %d', model_free_length)
     tf.logging.info('\t Model learning length: %d', model_learning_length)
@@ -254,10 +254,11 @@ class GAIRLAgent(AbstractAgent):
                                    observation_dtype=observation_dtype,
                                    stack_size=stack_size,
                                    summary_writer=summary_writer)
-    with tf.variable_scope('state_gen'), gin.config_scope('state_gen'):
-      self.state_gen = create_generator(sess, state_gen_name, state_shape,
-                                        input_shapes=input_shapes,
-                                        summary_writer=summary_writer)
+    with tf.variable_scope('observ_gen'), gin.config_scope('observ_gen'):
+      self.observ_gen = create_generator(sess, observ_gen_name,
+                                         self.observation_shape,
+                                         input_shapes=input_shapes,
+                                         summary_writer=summary_writer)
     with tf.variable_scope('rewterm_gen'), gin.config_scope('rewterm_gen'):
       self.rewterm_gen = create_generator(sess, rewterm_gen_name, (2,),
                                           input_shapes=input_shapes,
@@ -397,14 +398,14 @@ class GAIRLAgent(AbstractAgent):
     while True:
       # Prepare data
       batch_data = self._train_memory.sample_transition_batch()
-      batch_inputs, batch_next_state, batch_rewterm = \
+      batch_inputs, batch_next_observ, batch_rewterm = \
         self._prepare_transitions_batch(batch_data)
       # Train models
-      state_statistics = self.state_gen.train(batch_inputs, batch_next_state)
+      observ_statistics = self.observ_gen.train(batch_inputs, batch_next_observ)
       rewterm_statistics = self.rewterm_gen.train(batch_inputs, batch_rewterm)
-      for k, v in state_statistics.items():
+      for k, v in observ_statistics.items():
         weighted_value = v / self.model_learning_logging_frequency
-        mean_statistics[f'mean_state_{k}'] += weighted_value
+        mean_statistics[f'mean_observ_{k}'] += weighted_value
       for k, v in rewterm_statistics.items():
         weighted_value = v / self.model_learning_logging_frequency
         mean_statistics[f'mean_rewterm_{k}'] += weighted_value
@@ -439,13 +440,13 @@ class GAIRLAgent(AbstractAgent):
                                     self.model_learning_steps)
 
   def _prepare_model_learning_summaries(self, batch_data, test_or_train):
-    batch_inputs, batch_next_state, batch_rewterm = \
+    batch_inputs, batch_next_observ, batch_rewterm = \
       self._prepare_transitions_batch(batch_data)
     batch_reward = batch_rewterm[:, 0]
     batch_terminal = batch_rewterm[:, 1]
 
-    gen_next_state = self.state_gen.generate(batch_inputs)
-    state_l1 = np.mean(np.abs(gen_next_state - batch_next_state))
+    gen_next_observ = self.observ_gen.generate(batch_inputs)
+    observ_l1 = np.mean(np.abs(gen_next_observ - batch_next_observ))
 
     gen_rewterm = self.rewterm_gen.generate(batch_inputs)
     gen_reward = gen_rewterm[:, 0]
@@ -455,8 +456,8 @@ class GAIRLAgent(AbstractAgent):
     term_f1, term_precision, term_recall = \
       _calculate_classification_statistics(gen_terminal, batch_terminal)
     return [
-      tf.Summary.Value(tag=f'State/{test_or_train}L1Loss',
-                       simple_value=state_l1),
+      tf.Summary.Value(tag=f'Observ/{test_or_train}L1Loss',
+                       simple_value=observ_l1),
       tf.Summary.Value(tag=f'Rewterm/{test_or_train}L1Loss',
                        simple_value=rewterm_l1),
       tf.Summary.Value(tag=f'Rewterm/{test_or_train}RewardL2Loss',
@@ -478,17 +479,15 @@ class GAIRLAgent(AbstractAgent):
         consisting of all important information about sampled transitions.
 
     Returns:
-      tuple of numpy arrays, (batch_inputs, batch_next_state, batch_rewterm),
+      tuple of numpy arrays, (batch_inputs, batch_next_observ, batch_rewterm),
         all necessary and prepared pieces of transition data.
     """
     batch_states = batch_data[0]
     batch_actions_onehot = self.action_onehot_template[batch_data[1]]
     batch_inputs = (batch_states, batch_actions_onehot)
-    batch_next_state = batch_data[3]
-    batch_reward = batch_data[2]
-    batch_terminal = batch_data[6]
-    batch_rewterm = np.column_stack((batch_reward, batch_terminal))
-    return batch_inputs, batch_next_state, batch_rewterm
+    batch_next_observ = batch_data[3][..., -1]
+    batch_rewterm = np.column_stack((batch_data[2], batch_data[6]))
+    return batch_inputs, batch_next_observ, batch_rewterm
 
   def _train_model_based(self):
     pass
@@ -520,13 +519,13 @@ class GAIRLAgent(AbstractAgent):
     agent_bundle = {k + AGENT_APPENDIX: v
                     for (k, v) in agent_bundle.items()}
 
-    state_path = os.path.join(checkpoint_dir, STATE_SUBDIR)
-    if not os.path.exists(state_path):
-      os.mkdir(state_path)
-    state_bundle = self.state_gen.bundle_and_checkpoint(state_path,
-                                                        iteration_number)
-    state_bundle = {k + STATE_APPENDIX: v
-                    for (k, v) in state_bundle.items()}
+    observ_path = os.path.join(checkpoint_dir, OBSERV_SUBDIR)
+    if not os.path.exists(observ_path):
+      os.mkdir(observ_path)
+    observ_bundle = self.observ_gen.bundle_and_checkpoint(observ_path,
+                                                          iteration_number)
+    observ_bundle = {k + OBSERV_APPENDIX: v
+                     for (k, v) in observ_bundle.items()}
 
     rewterm_path = os.path.join(checkpoint_dir, REWTERM_SUBDIR)
     if not os.path.exists(rewterm_path):
@@ -555,7 +554,7 @@ class GAIRLAgent(AbstractAgent):
       'non_terminals_so_far': self.non_terminals_so_far
     }
 
-    return {**agent_bundle, **state_bundle, **rewterm_bundle, **gairl_bundle}
+    return {**agent_bundle, **observ_bundle, **rewterm_bundle, **gairl_bundle}
 
   def unbundle(self, checkpoint_dir, iteration_number, bundle_dictionary):
     """Restores the agent from a checkpoint.
@@ -582,11 +581,11 @@ class GAIRLAgent(AbstractAgent):
                                   agent_bundle):
       return False
 
-    state_path = os.path.join(checkpoint_dir, STATE_SUBDIR)
-    state_bundle = {k[:-2]: v for k, v in bundle_dictionary.items()
-                    if k[-2:] == STATE_APPENDIX}
-    if not self.state_gen.unbundle(state_path, iteration_number,
-                                   state_bundle):
+    observ_path = os.path.join(checkpoint_dir, OBSERV_SUBDIR)
+    observ_bundle = {k[:-2]: v for k, v in bundle_dictionary.items()
+                     if k[-2:] == OBSERV_APPENDIX}
+    if not self.observ_gen.unbundle(observ_path, iteration_number,
+                                    observ_bundle):
       return False
 
     rewterm_path = os.path.join(checkpoint_dir, REWTERM_SUBDIR)
