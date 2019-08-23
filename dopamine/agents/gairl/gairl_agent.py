@@ -230,6 +230,7 @@ class GAIRLAgent(AbstractAgent):
                            stack_size=stack_size)
     self.observation_dtype = observation_dtype
     self.model_free_steps = 0
+    self.model_free_steps_since_phase_start = 0
     self.model_free_length = model_free_length
     self.model_learning_steps = 0
     self.model_learning_length = model_learning_length
@@ -307,7 +308,8 @@ class GAIRLAgent(AbstractAgent):
 
     if not self.eval_mode:
       self._train_observation = np.reshape(observation, self.observation_shape)
-      self._train_step()
+      self.model_free_steps += 1
+      self.model_free_steps_since_phase_start += 1
 
     self.rl_agent.eval_mode = self.eval_mode
     self.action = self.rl_agent.begin_episode(observation)
@@ -331,7 +333,8 @@ class GAIRLAgent(AbstractAgent):
       self._train_observation = np.reshape(observation, self.observation_shape)
       self._store_transition(self._last_train_observation, self.action,
                              reward, False)
-      self._train_step()
+      self.model_free_steps += 1
+      self.model_free_steps_since_phase_start += 1
 
     self.rl_agent.eval_mode = self.eval_mode
     self.action = self.rl_agent.step(reward, observation)
@@ -348,6 +351,10 @@ class GAIRLAgent(AbstractAgent):
     """
     if not self.eval_mode:
       self._store_transition(self._train_observation, self.action, reward, True)
+      if self.model_free_steps_since_phase_start > self.model_free_length:
+        self._train_generators()
+        self._train_model_based()
+        self.model_free_steps_since_phase_start = 0
 
     self.rl_agent.eval_mode = self.eval_mode
     self.rl_agent.end_episode(reward)
@@ -381,17 +388,6 @@ class GAIRLAgent(AbstractAgent):
 
     for i in range(upsampling_ratio):
       mem.add(last_observation, action, reward, is_terminal)
-
-  def _train_step(self):
-    """Increment model free steps count.
-
-    Run model training followed by model based training if model free phase
-    finished.
-    """
-    self.model_free_steps += 1
-    if self.model_free_steps % self.model_free_length == 0:
-      self._train_generators()
-      self._train_model_based()
 
   def _train_generators(self):
     """Run model learning phase - train generative models"""
@@ -552,6 +548,7 @@ class GAIRLAgent(AbstractAgent):
 
     gairl_bundle = {
       'model_free_steps': self.model_free_steps,
+      'model_free_steps_since_phase_start': self.model_free_steps_since_phase_start,
       'model_learning_steps': self.model_learning_steps,
       'model_based_steps': self.model_based_steps,
       'terminals_so_far': self.terminals_so_far,
