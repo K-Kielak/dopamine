@@ -550,7 +550,15 @@ class GAIRLAgent(AbstractAgent):
       os.mkdir(test_mem_path)
     self._test_memory.save(test_mem_path, iteration_number)
 
-    return {**agent_bundle, **state_bundle, **rewterm_bundle}
+    gairl_bundle = {
+      'model_free_steps': self.model_free_steps,
+      'model_learning_steps': self.model_learning_steps,
+      'model_based_steps': self.model_based_steps,
+      'terminals_so_far': self.terminals_so_far,
+      'non_terminals_so_far': self.non_terminals_so_far
+    }
+
+    return {**agent_bundle, **state_bundle, **rewterm_bundle, **gairl_bundle}
 
   def unbundle(self, checkpoint_dir, iteration_number, bundle_dictionary):
     """Restores the agent from a checkpoint.
@@ -596,5 +604,9 @@ class GAIRLAgent(AbstractAgent):
 
     test_mem_path = os.path.join(checkpoint_dir, TEST_MEM_SUBDIR)
     self._test_memory.load(test_mem_path, iteration_number)
+
+    for key in self.__dict__:
+      if key in bundle_dictionary:
+        self.__dict__[key] = bundle_dictionary[key]
 
     return True
