@@ -18,6 +18,7 @@ import collections
 import os
 import random
 import time
+import sys
 
 
 
@@ -170,7 +171,9 @@ class GAIRLAgent(AbstractAgent):
                model_free_length=10000,
                model_learning_length=50000,
                model_learning_logging_frequency=100,
+               model_based_max_steps_per_episode=10000,
                model_based_length=50000,
+               model_based_logging_frequency=10000,
                terminals_upsampling_coeff=None,
                train_memory_capacity=40000,
                test_memory_capacity=10000,
@@ -196,8 +199,16 @@ class GAIRLAgent(AbstractAgent):
         a single GAIRL iteration.
       model_learning_length: int, how many model learning iterations are
         performed in a single GAIRL iteration.
+      model_learning_logging_frequency: int, frequency with which data will be
+        logged during the model learning phase. Lower values will result in
+        slower training.
+      model_based_max_steps_per_episode: int, maximum number of model based
+        steps after which an episode terminates.
       model_based_length: int, how many reinforcement learning steps will be
         performed in a simulated environment in a single GAIRL iteration.
+      model_based_logging_frequency: int, frequency with which data will be
+        logged during the model based phase. Lower values will result in
+        slower training.
       terminals_upsampling_coeff: float, specifies what's the expected
         terminals/non_terminals ratio in the memory. If terminals don't
         naturally reach that ratio, they will be upsampled accordingly.
@@ -236,7 +247,11 @@ class GAIRLAgent(AbstractAgent):
     self.model_learning_length = model_learning_length
     self.model_learning_logging_frequency = model_learning_logging_frequency
     self.model_based_steps = 0
+    self.model_based_steps_since_last_log = 0
+    self.model_based_steps_since_phase_start = 0
+    self.model_based_max_steps_per_episode = model_based_max_steps_per_episode
     self.model_based_length = model_based_length
+    self.model_based_logging_frequency = model_based_logging_frequency
     self.terminals_so_far = 0
     self.non_terminals_so_far = 0
     self.terminals_upsampling_coeff = terminals_upsampling_coeff
@@ -490,6 +505,127 @@ class GAIRLAgent(AbstractAgent):
     return batch_inputs, batch_next_observ, batch_rewterm
 
   def _train_model_based(self):
+    tf.logging.info('***Starting model based phase.***')
+    self.model_based_steps_since_phase_start = 0
+    self.rl_agent.eval_mode = False
+    num_episodes = 0
+    sum_returns = 0
+    start_time = time.time()
+    while self.model_based_steps_since_phase_start < self.model_based_length:
+
+      length, reward = self._run_model_based_episode()
+      self.model_based_steps += length
+      self.model_based_steps_since_last_log += length
+      self.model_based_steps_since_phase_start += length
+      num_episodes += 1
+      sum_returns += reward
+
+      # We use sys.stdout.write instead of tf.logging so as to flush frequently
+      # without generating a line break.
+      sys.stdout.write(f'Steps executed so far: '
+                       f'{self.model_based_steps_since_last_log} ' +
+                       f'Episode length: {length} ' +
+                       f'Return: {reward}\r')
+      sys.stdout.flush()
+
+      # Log
+      if self.model_based_steps_since_last_log > self.model_based_logging_frequency:
+        time_delta = time.time() - start_time
+        average_return = sum_returns / num_episodes if num_episodes > 0 else 0.
+        tf.logging.info('Average return per training episode: %.2f',
+                        average_return)
+        tf.logging.info('Average training steps per second: %.2f',
+                        self.model_based_steps_since_last_log / time_delta)
+        start_time = time.time()
+        self._save_model_based_summaries()
+        num_episodes = 0
+        sum_returns = 0
+        self.model_based_steps_since_last_log = 0
+
+    tf.logging.info('***Finished model based phase.***')
+
+  def _run_model_based_episode(self):
+    """Executes a full trajectory of the agent interacting with the
+    environment simulation created by the generative models.
+
+    The simulation starts based on a sample non-terminal observation from the
+    train memory and is then roll-out using GAIRL's generative models.
+
+    Returns:
+      The number of steps taken and the total reward.
+    """
+    step_number = 0
+    total_reward = 0.
+    state = np.zeros((1,) + self.observation_shape + (self.stack_size,))
+
+    # Initialize episode
+    observation = self._get_initial_model_based_observation()
+    action = self.rl_agent.begin_episode(observation)
+
+    # Keep interacting until we reach a terminal observation.
+    while True:
+      state = self._update_state(state, observation)
+      action_onehot = self.action_onehot_template[[action]]
+
+      # Simulate transition
+      observation = self.observ_gen.generate((state, action_onehot))[0]
+      reward, is_terminal = self.rewterm_gen.generate((state, action_onehot))[0]
+
+      total_reward += reward
+      step_number += 1
+
+      # Perform outputs postprocessing.
+      reward = np.clip(reward, -1, 1)
+      is_terminal = round(is_terminal)
+      is_terminal = np.clip(is_terminal, 0, 1)
+
+      if is_terminal or step_number >= self.model_based_max_steps_per_episode:
+        break
+
+      action = self.rl_agent.step(reward, observation)
+
+    self.rl_agent.end_episode(reward)
+    return step_number, total_reward
+
+  def _get_initial_model_based_observation(self):
+    """Getting a sample observation to initialize the episode.
+
+    Returns:
+      numpy array, the initial non-terminal observation sampled from the train
+        memory.
+    """
+    state = None
+    is_terminal = 1
+    while is_terminal:
+      transition = self._train_memory.sample_transition_batch(batch_size=1)
+      state = transition[0][0]
+      is_terminal = transition[6][0]
+
+    return state[..., -1]  # Get least recent observation from the state
+
+  def _update_state(self, state, observation):
+    """Records an observation and updates state.
+
+    Extracts a frame from the observation vector and overwrites the oldest
+    frame in the state buffer.
+
+    Args:
+      state: numpy array, stack of observations.
+      observation: numpy array, an observation from the environment.
+
+    Returns:
+      Updated state.
+    """
+    # Set current observation. We do the reshaping to handle environments
+    # without frame stacking.
+    observation = np.reshape(observation, self.observation_shape)
+    # Swap out the oldest frame with the current frame.
+    state = np.roll(state, -1, axis=-1)
+    state[0, ..., -1] = observation
+    return state
+
+  def _save_model_based_summaries(self):
+    # TODO
     pass
 
   def bundle_and_checkpoint(self, checkpoint_dir, iteration_number):
@@ -547,9 +683,14 @@ class GAIRLAgent(AbstractAgent):
 
     gairl_bundle = {
       'model_free_steps': self.model_free_steps,
-      'model_free_steps_since_phase_start': self.model_free_steps_since_phase_start,
+      'model_free_steps_since_phase_start':
+        self.model_free_steps_since_phase_start,
       'model_learning_steps': self.model_learning_steps,
       'model_based_steps': self.model_based_steps,
+      'model_based_steps_since_last_log':
+        self.model_based_steps_since_last_log,
+      'model_based_steps_since_phase_start':
+        self.model_based_steps_since_phase_start,
       'terminals_so_far': self.terminals_so_far,
       'non_terminals_so_far': self.non_terminals_so_far
     }
